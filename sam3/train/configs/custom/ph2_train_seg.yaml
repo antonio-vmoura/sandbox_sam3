@@ -381,7 +381,7 @@ trainer:
 
   checkpoint:
     save_dir: ${paths.experiment_log_dir}/checkpoints
-    save_freq: 5 # Salvar a cada 5 épocas para não encher o disco
+    save_freq: 0 # Salvar a cada 5 épocas para não encher o disco
 
   logging:
     tensorboard_writer:

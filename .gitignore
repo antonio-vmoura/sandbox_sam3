@@ -140,7 +140,8 @@ sam3_logs/
 *.npz
 
 # Logs
-# logs/
+logs/
+logs*/
 cache/
 runs/
 tensorboard/

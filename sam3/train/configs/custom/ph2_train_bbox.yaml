@@ -346,7 +346,7 @@ trainer:
 
   checkpoint:
     save_dir: /home/avmoura_linux/Documents/unb/sandbox_sam3/logs_bbox/checkpoints
-    save_freq: 1  # 0 only last checkpoint is saved.
+    save_freq: 0  # 0 only last checkpoint is saved.
 
   logging:
     tensorboard_writer:

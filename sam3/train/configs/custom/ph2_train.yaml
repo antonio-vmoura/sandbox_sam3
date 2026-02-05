@@ -373,7 +373,7 @@ trainer:
 
   checkpoint:
     save_dir: ${paths.experiment_log_dir}/checkpoints
-    save_freq: 1
+    save_freq: 0
 
   logging:
     tensorboard_writer:

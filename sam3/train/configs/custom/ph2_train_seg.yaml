@@ -8,7 +8,7 @@ defaults:
 paths:
   root_dir: /workspace
   ph2_root: ${paths.root_dir}/data/ph2
-  experiment_log_dir: ${paths.root_dir}/logs/ph2_experiment_segmentation
+  experiment_log_dir: ${paths.root_dir}/logs/ph2_experiment_segmentation_v2
   bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
 
 # ============================================================================
@@ -16,22 +16,18 @@ paths:
 # ============================================================================
 ph2_config:
   num_images: null 
-  
-  # Caminhos baseados na montagem do volume docker
   train_img_dir: ${paths.ph2_root}/train/
   train_ann_file: ${paths.ph2_root}/train/_annotations.coco.json
-  
   val_img_dir: ${paths.ph2_root}/test/
   val_ann_file: ${paths.ph2_root}/test/_annotations.coco.json
 
-  # Training transforms pipeline
+  # Training transforms
   train_transforms:
     - _target_: sam3.train.transforms.basic_for_api.ComposeAPI
       transforms:
         - _target_: sam3.train.transforms.filter_query_transforms.FlexibleFilterFindGetQueries
           query_filter:
             _target_: sam3.train.transforms.filter_query_transforms.FilterCrowds
-        # DecodeRle é essencial para carregar as máscaras do COCO JSON
         - _target_: sam3.train.transforms.segmentation.DecodeRle
         - _target_: sam3.train.transforms.point_sampling.RandomizeInputBbox
           box_noise_std: 0.1
@@ -62,7 +58,7 @@ ph2_config:
         _target_: sam3.train.transforms.filter_query_transforms.FilterFindQueriesWithTooManyOut
         max_num_objects: ${scratch.max_ann_per_img}
 
-  # Validation transforms pipeline
+  # Validation transforms
   val_transforms:
     - _target_: sam3.train.transforms.basic_for_api.ComposeAPI
       transforms:
@@ -90,12 +86,12 @@ ph2_config:
       topk: 4
     use_o2m_matcher_on_o2m_aux: false
     loss_fns_find:
-      # Loss de Bounding Box
+      # 1. BBox Loss
       - _target_: sam3.train.loss.loss_fns.Boxes
         weight_dict:
           loss_bbox: 5.0
           loss_giou: 2.0
-      # Loss de Classificação
+      # 2. Classification Loss
       - _target_: sam3.train.loss.loss_fns.IABCEMdetr
         weak_loss: False
         weight_dict:
@@ -108,14 +104,20 @@ ph2_config:
         pos_focal: false
         pad_n_queries: 200
         pad_scale_pos: 1.0
-      # [ADICIONADO] Loss de Segmentação (Masks)
+      # 3. Mask Loss (Segmentação)
       - _target_: sam3.train.loss.loss_fns.Masks
         focal_alpha: 0.25
         focal_gamma: 2.0
         weight_dict:
-          loss_mask: 5.0  # Peso da focal loss pixel a pixel
-          loss_dice: 5.0  # Peso da Dice loss (ótimo para segmentação médica)
-        compute_aux: false # Se True, calcula loss para saídas intermediárias (mais pesado)
+          loss_mask: 5.0
+          loss_dice: 5.0
+        compute_aux: false
+      # 4. [NOVO] IoU Loss (Correção do erro DDP)
+      # Supervisiona a predição de qualidade da máscara, garantindo que
+      # a IoU Head receba gradientes.
+      - _target_: sam3.train.loss.loss_fns.IoU
+        weight_dict:
+          loss_iou: 1.0
 
     loss_fn_semantic_seg: null
     scale_by_find_batch_size: ${scratch.scale_by_find_batch_size}
@@ -124,8 +126,7 @@ ph2_config:
 # Scratch Configuration
 # ============================================================================
 scratch:
-  # [ADICIONADO] Ativa a lógica de segmentação globalmente
-  enable_segmentation: True 
+  enable_segmentation: True
   
   d_model: 256
   pos_embed:
@@ -143,14 +144,13 @@ scratch:
     use_original_sizes_box: true
     use_presence: ${scratch.use_presence_eval}
   
-  # [ADICIONADO] Postprocessor para Máscaras na Validação
   mask_postprocessor:
     _target_: sam3.eval.postprocessors.PostProcessImage
     max_dets_per_img: 100
     iou_type: "segm"
     use_original_ids: false
     use_original_sizes_box: false
-    use_original_sizes_mask: true # Importante para métricas corretas
+    use_original_sizes_mask: true
     detection_threshold: 0.3
     use_presence: ${scratch.use_presence_eval}
 
@@ -174,11 +174,10 @@ scratch:
   val_norm_mean: [0.5, 0.5, 0.5]
   val_norm_std: [0.5, 0.5, 0.5]
 
-  # Training parameters
-  # Com --ipc=host, podemos usar mais workers sem medo de "Bus error"
-  num_train_workers: 8 
+  # Workers otimizados para V100 e Xeon
+  num_train_workers: 8
   num_val_workers: 4
-  max_data_epochs: 10 # 50
+  max_data_epochs: 50
   target_epoch_size: 1500
   hybrid_repeats: 1
   context_length: 2
@@ -194,25 +193,22 @@ scratch:
   scheduler_warmup: 20
   scheduler_cooldown: 20
 
-  # Configuração de Validação
   val_batch_size: 2
   collate_fn_val:
     _target_: sam3.train.data.collator.collate_fn_api
     _partial_: true
     repeats: ${scratch.hybrid_repeats}
     dict_key: ph2_eval
-    with_seg_masks: ${scratch.enable_segmentation} # [IMPORTANTE] Carrega máscaras
+    with_seg_masks: ${scratch.enable_segmentation}
 
   gradient_accumulation_steps: 1
-  # Configuração de Treino
-  # V100 32GB aguenta batch 4 tranquilamente com resolução 1008
-  train_batch_size: 4 
+  train_batch_size: 4
   collate_fn:
     _target_: sam3.train.data.collator.collate_fn_api
     _partial_: true
     repeats: ${scratch.hybrid_repeats}
     dict_key: all
-    with_seg_masks: ${scratch.enable_segmentation} # [IMPORTANTE] Carrega máscaras
+    with_seg_masks: ${scratch.enable_segmentation}
 
 # ============================================================================
 # Trainer Configuration
@@ -221,7 +217,7 @@ trainer:
   _target_: sam3.train.trainer.Trainer
   skip_saving_ckpts: false
   empty_gpu_mem_cache_after_eval: True
-  skip_first_val: False # Mudei para False para testar a validação logo no início (sanity check)
+  skip_first_val: False
   max_epochs: ${scratch.max_data_epochs}
   accelerator: cuda
   seed_value: 123
@@ -246,7 +242,7 @@ trainer:
         _target_: sam3.train.data.sam3_image_dataset.Sam3ImageDataset
         limit_ids: ${ph2_config.num_images}
         transforms: ${ph2_config.train_transforms}
-        load_segmentation: ${scratch.enable_segmentation} # [ATIVO]
+        load_segmentation: ${scratch.enable_segmentation}
         max_ann_per_img: 500000
         multiplier: 1
         max_train_queries: 50000
@@ -271,7 +267,7 @@ trainer:
       _target_: sam3.train.data.torch_dataset.TorchDataset
       dataset:
         _target_: sam3.train.data.sam3_image_dataset.Sam3ImageDataset
-        load_segmentation: ${scratch.enable_segmentation} # [ATIVO]
+        load_segmentation: ${scratch.enable_segmentation}
         coco_json_loader:
           _target_: sam3.train.data.coco_json_loaders.COCO_FROM_JSON
           include_negatives: true
@@ -296,26 +292,24 @@ trainer:
     bpe_path: ${paths.bpe_path}
     device: cpus
     eval_mode: false
-    enable_segmentation: ${scratch.enable_segmentation} # [ATIVO]
+    enable_segmentation: ${scratch.enable_segmentation}
 
   meters:
     val:
       ph2_eval:
         detection:
           _target_: sam3.eval.coco_writer.PredictionDumper
-          iou_type: "segm" # [MUDANÇA] Alterado de bbox para segm para avaliar as máscaras
+          iou_type: "segm"
           dump_dir: ${paths.experiment_log_dir}/dumps/ph2
           merge_predictions: True
-          postprocessor: ${scratch.mask_postprocessor} # [MUDANÇA] Usa o pós-processador de máscara
+          postprocessor: ${scratch.mask_postprocessor}
           gather_pred_via_filesys: ${scratch.gather_pred_via_filesys}
           maxdets: 100
           pred_file_evaluators:
-            # Avaliador de BBox
             - _target_: sam3.eval.coco_eval_offline.CocoEvaluatorOfflineWithPredFileEvaluators
               gt_path: ${ph2_config.val_ann_file}
               tide: False
               iou_type: "bbox"
-            # Avaliador de Segmentação
             - _target_: sam3.eval.coco_eval_offline.CocoEvaluatorOfflineWithPredFileEvaluators
               gt_path: ${ph2_config.val_ann_file}
               tide: False
@@ -324,7 +318,7 @@ trainer:
   optim:
     amp:
       enabled: True
-      amp_dtype: float16 # V100 nao ta suportando bfloat16
+      amp_dtype: bfloat16
 
     optimizer:
       _target_: torch.optim.AdamW
@@ -381,7 +375,7 @@ trainer:
 
   checkpoint:
     save_dir: ${paths.experiment_log_dir}/checkpoints
-    save_freq: 0 # Salvar a cada 5 épocas para não encher o disco
+    save_freq: 0
 
   logging:
     tensorboard_writer:

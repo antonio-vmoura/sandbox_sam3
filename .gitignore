@@ -146,6 +146,9 @@ cache/
 runs/
 tensorboard/
 
+#images
+utils/visual_results_debug
+
 # OS specific
 .DS_Store
 Thumbs.db

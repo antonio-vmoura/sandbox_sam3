@@ -8,10 +8,10 @@ from typing import Dict, List, Any
 # CONFIGURATION
 # ==========================================
 CONFIG = {
-    "images_dir": Path("/home/avmoura_linux/Documents/unb/sam3/ph2_dataset/valid/"),
-    "json_file": Path("/home/avmoura_linux/Documents/unb/sam3/logs/dumps/roboflow/coco_predictions_bbox.json"),
-    "output_dir": Path("/home/avmoura_linux/Documents/unb/sam3/visual_results_debug"),
-    "score_threshold": 0.01,  # Low threshold (2%) to ensure boxes are displayed
+    "images_dir": Path("/home/avmoura_linux/Documents/unb/sandbox_sam3/ph2_dataset/valid/"),
+    "json_file": Path("/home/avmoura_linux/Documents/unb/sandbox_sam3/logs_train_bbox/ph2_bbox_log/dumps/ph2/coco_predictions_bbox.json"),
+    "output_dir": Path("/home/avmoura_linux/Documents/unb/sandbox_sam3/utils/visual_results_debug"),
+    "score_threshold": 0.5,  # Low threshold (2%) to ensure boxes are displayed
     "bbox_color": (0, 255, 255), # Yellow (B, G, R)
     "valid_extensions": {'.png', '.jpg', '.jpeg', '.bmp'}
 }

@@ -112,6 +112,8 @@ ph2_config:
           loss_mask: 5.0
           loss_dice: 5.0
         compute_aux: false
+      # REMOVIDA: Loss IoU que causava erro de importação.
+      # Ao usar 1 GPU, o erro de "unused parameters" não ocorrerá.
 
     loss_fn_semantic_seg: null
     scale_by_find_batch_size: ${scratch.scale_by_find_batch_size}
@@ -171,7 +173,7 @@ scratch:
   # Workers
   num_train_workers: 8
   num_val_workers: 4
-  max_data_epochs: 50
+  max_data_epochs: 5
   target_epoch_size: 1500
   hybrid_repeats: 1
   context_length: 2
@@ -187,7 +189,7 @@ scratch:
   scheduler_warmup: 20
   scheduler_cooldown: 20
 
-  val_batch_size: 1  # Ajustado para evitar OOM
+  val_batch_size: 2
   collate_fn_val:
     _target_: sam3.train.data.collator.collate_fn_api
     _partial_: true
@@ -195,8 +197,8 @@ scratch:
     dict_key: ph2_eval
     with_seg_masks: ${scratch.enable_segmentation}
 
-  gradient_accumulation_steps: 2 # Ajustado para compensar o batch reduzido
-  train_batch_size: 2 # Ajustado para evitar OOM
+  gradient_accumulation_steps: 1
+  train_batch_size: 4
   collate_fn:
     _target_: sam3.train.data.collator.collate_fn_api
     _partial_: true
@@ -369,7 +371,7 @@ trainer:
 
   checkpoint:
     save_dir: ${paths.experiment_log_dir}/checkpoints
-    save_freq: 5
+    save_freq: 0
 
   logging:
     tensorboard_writer:
@@ -383,7 +385,7 @@ trainer:
 
 launcher:
   num_nodes: 1
-  gpus_per_node: 1
+  gpus_per_node: 1 # [IMPORTANTE] Força 1 GPU apenas
   experiment_log_dir: ${paths.experiment_log_dir}
   multiprocessing_context: forkserver
 

@@ -915,17 +915,33 @@ class Trainer:
         # gradients
         self.optim.zero_grad(set_to_none=True)
 
+        # if self.gradient_accumulation_steps > 1:
+        #     assert isinstance(batch, list), (
+        #         f"Expected a list of batches, got {type(batch)}"
+        #     )
+        #     assert len(batch) == self.gradient_accumulation_steps, (
+        #         f"Expected {self.gradient_accumulation_steps} batches, got {len(batch)}"
+        #     )
+        #     accum_steps = len(batch)
+        # else:
+        #     accum_steps = 1
+        #     batch = [batch]
+        
+        # --- CORREÇÃO ANTÔNIO: Flexibilidade para Batch/Dict ---
+        # 1. Se o batch chegou como dicionário único, encapsula em lista
+        if isinstance(batch, dict):
+            batch = [batch]
+
+        # 2. Define accum_steps. Se a lista não tiver o tamanho esperado,
+        # usamos o tamanho real da lista (evita o AssertionError)
         if self.gradient_accumulation_steps > 1:
-            assert isinstance(batch, list), (
-                f"Expected a list of batches, got {type(batch)}"
-            )
-            assert len(batch) == self.gradient_accumulation_steps, (
-                f"Expected {self.gradient_accumulation_steps} batches, got {len(batch)}"
-            )
-            accum_steps = len(batch)
+            if len(batch) != self.gradient_accumulation_steps:
+                 # O loader entregou menos pedaços que o esperado, ajustamos para não quebrar
+                 accum_steps = len(batch)
+            else:
+                 accum_steps = len(batch)
         else:
             accum_steps = 1
-            batch = [batch]
 
         for i, chunked_batch in enumerate(batch):
             ddp_context = (

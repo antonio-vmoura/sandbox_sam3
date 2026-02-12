@@ -14,7 +14,7 @@ paths:
   ph2_root: ${paths.root_dir}/data/ph2
   
   # Logs salvos em /workspace/logs para persistência
-  experiment_log_dir: ${paths.root_dir}/logs/ph2_experiment
+  experiment_log_dir: ${paths.root_dir}/logs/ph2_train_bbox
   
   # O BPE geralmente fica dentro do código fonte copiado para o container
   bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
@@ -42,8 +42,8 @@ ph2_config:
           query_filter:
             _target_: sam3.train.transforms.filter_query_transforms.FilterCrowds
         - _target_: sam3.train.transforms.point_sampling.RandomizeInputBbox
-          box_noise_std: 0.1
-          box_noise_max: 20
+          box_noise_std: 0.2  # Era 0.1. Mais ruído = Modelo mais esperto.
+          box_noise_max: 50   # Era 20. Permite erros maiores no prompt simulado.
         - _target_: sam3.train.transforms.segmentation.DecodeRle
         - _target_: sam3.train.transforms.basic_for_api.RandomResizeAPI
           sizes:
@@ -176,9 +176,9 @@ scratch:
   gather_pred_via_filesys: false
 
   lr_scale: 0.1
-  lr_transformer: ${times:8e-4,${scratch.lr_scale}}
-  lr_vision_backbone: ${times:2.5e-4,${scratch.lr_scale}}
-  lr_language_backbone: ${times:5e-5,${scratch.lr_scale}}
+  lr_transformer: ${times:1e-4,${scratch.lr_scale}} #${times:8e-4,${scratch.lr_scale}}
+  lr_vision_backbone: ${times:1e-5,${scratch.lr_scale}} #${times:2.5e-4,${scratch.lr_scale}}
+  lr_language_backbone: ${times:1e-5,${scratch.lr_scale}} # ${times:5e-5,${scratch.lr_scale}}
   lrd_vision_backbone: 0.9
   wd: 0.1
   scheduler_timescale: 20

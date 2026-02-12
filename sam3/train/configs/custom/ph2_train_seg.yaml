@@ -8,7 +8,7 @@
   paths:
     root_dir: /workspace
     ph2_root: ${paths.root_dir}/data/ph2
-    experiment_log_dir: ${paths.root_dir}/logs/ph2_experiment_segmentation_single_gpu
+    experiment_log_dir: ${paths.root_dir}/logs/ph2_train_seg
     bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
 
   # ============================================================================
@@ -30,8 +30,8 @@
               _target_: sam3.train.transforms.filter_query_transforms.FilterCrowds
           - _target_: sam3.train.transforms.segmentation.DecodeRle
           - _target_: sam3.train.transforms.point_sampling.RandomizeInputBbox
-            box_noise_std: 0.1
-            box_noise_max: 20
+            box_noise_std: 0.2  # Era 0.1. Aumentar força o modelo a ser mais robusto.
+            box_noise_max: 50   # Era 20. Permite caixas mais "erradas" no treino.
           - _target_: sam3.train.transforms.basic_for_api.RandomResizeAPI
             sizes:
               _target_: sam3.train.transforms.basic.get_random_resize_scales
@@ -174,16 +174,16 @@
     # Workers
     num_train_workers: 2 #4 #8
     num_val_workers: 4
-    max_data_epochs: 5
+    max_data_epochs: 50
     target_epoch_size: 1500
     hybrid_repeats: 1
     context_length: 2
     gather_pred_via_filesys: false
 
     lr_scale: 0.1
-    lr_transformer: ${times:8e-4,${scratch.lr_scale}}
-    lr_vision_backbone: ${times:2.5e-4,${scratch.lr_scale}}
-    lr_language_backbone: ${times:5e-5,${scratch.lr_scale}}
+    lr_transformer: ${times:1e-4,${scratch.lr_scale}}
+    lr_vision_backbone: ${times:2.5e-5,${scratch.lr_scale}}
+    lr_language_backbone: ${times:1e-5,${scratch.lr_scale}}
     lrd_vision_backbone: 0.9
     wd: 0.1
     scheduler_timescale: 20

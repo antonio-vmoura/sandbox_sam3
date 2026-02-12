@@ -171,7 +171,7 @@
     val_norm_std: [0.5, 0.5, 0.5]
 
     # Workers
-    num_train_workers: 8
+    num_train_workers: 4 #8
     num_val_workers: 4
     max_data_epochs: 5
     target_epoch_size: 1500
@@ -197,8 +197,8 @@
       dict_key: ph2_eval
       with_seg_masks: ${scratch.enable_segmentation}
 
-    gradient_accumulation_steps: 1
-    train_batch_size: 4
+    gradient_accumulation_steps: 2 #1
+    train_batch_size: 2 #4
     collate_fn:
       _target_: sam3.train.data.collator.collate_fn_api
       _partial_: true

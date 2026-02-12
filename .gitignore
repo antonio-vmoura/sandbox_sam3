@@ -145,7 +145,7 @@ logs*/
 cache/
 runs/
 tensorboard/
-ph2_experiment_segmentation_single_gpu/
+old_logs/
 
 #images
 utils/visual_results_debug

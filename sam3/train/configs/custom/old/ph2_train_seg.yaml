@@ -8,7 +8,7 @@ defaults:
 paths:
   root_dir: /workspace
   ph2_root: ${paths.root_dir}/data/ph2
-  experiment_log_dir: ${paths.root_dir}/logs/ph2_experiment_segmentation_single_gpu
+  experiment_log_dir: ${paths.root_dir}/logs/ph2_experiment_segmentation_v2
   bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
 
 # ============================================================================
@@ -86,12 +86,12 @@ ph2_config:
       topk: 4
     use_o2m_matcher_on_o2m_aux: false
     loss_fns_find:
-      # Loss Boxes
+      # 1. BBox Loss
       - _target_: sam3.train.loss.loss_fns.Boxes
         weight_dict:
           loss_bbox: 5.0
           loss_giou: 2.0
-      # Loss Classification
+      # 2. Classification Loss
       - _target_: sam3.train.loss.loss_fns.IABCEMdetr
         weak_loss: False
         weight_dict:
@@ -104,7 +104,7 @@ ph2_config:
         pos_focal: false
         pad_n_queries: 200
         pad_scale_pos: 1.0
-      # Loss Masks (Segmentação)
+      # 3. Mask Loss (Segmentação)
       - _target_: sam3.train.loss.loss_fns.Masks
         focal_alpha: 0.25
         focal_gamma: 2.0
@@ -112,8 +112,12 @@ ph2_config:
           loss_mask: 5.0
           loss_dice: 5.0
         compute_aux: false
-      # REMOVIDA: Loss IoU que causava erro de importação.
-      # Ao usar 1 GPU, o erro de "unused parameters" não ocorrerá.
+      # 4. [NOVO] IoU Loss (Correção do erro DDP)
+      # Supervisiona a predição de qualidade da máscara, garantindo que
+      # a IoU Head receba gradientes.
+      - _target_: sam3.train.loss.loss_fns.IoU
+        weight_dict:
+          loss_iou: 1.0
 
     loss_fn_semantic_seg: null
     scale_by_find_batch_size: ${scratch.scale_by_find_batch_size}
@@ -170,10 +174,10 @@ scratch:
   val_norm_mean: [0.5, 0.5, 0.5]
   val_norm_std: [0.5, 0.5, 0.5]
 
-  # Workers
+  # Workers otimizados para V100 e Xeon
   num_train_workers: 8
   num_val_workers: 4
-  max_data_epochs: 5
+  max_data_epochs: 50
   target_epoch_size: 1500
   hybrid_repeats: 1
   context_length: 2
@@ -197,8 +201,8 @@ scratch:
     dict_key: ph2_eval
     with_seg_masks: ${scratch.enable_segmentation}
 
-  gradient_accumulation_steps: 1
-  train_batch_size: 4
+  gradient_accumulation_steps: 4
+  train_batch_size: 1 # Era 4 mudei para 1
   collate_fn:
     _target_: sam3.train.data.collator.collate_fn_api
     _partial_: true
@@ -241,8 +245,8 @@ trainer:
         load_segmentation: ${scratch.enable_segmentation}
         max_ann_per_img: 500000
         multiplier: 1
-        max_train_queries: 50000
-        max_val_queries: 50000
+        max_train_queries: 50  # 50000
+        max_val_queries: 50 #50000
         training: true
         use_caching: False
         img_folder: ${ph2_config.train_img_dir}
@@ -385,7 +389,7 @@ trainer:
 
 launcher:
   num_nodes: 1
-  gpus_per_node: 1 # [IMPORTANTE] Força 1 GPU apenas
+  gpus_per_node: 2
   experiment_log_dir: ${paths.experiment_log_dir}
   multiprocessing_context: forkserver
 

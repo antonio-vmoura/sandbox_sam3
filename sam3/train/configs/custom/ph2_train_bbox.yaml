@@ -3,17 +3,36 @@ defaults:
   - _self_
 
 # ============================================================================
-# Paths Configuration (Chage this to your own paths)
+# Paths Configuration (Docker Optimized)
 # ============================================================================
 paths:
-  roboflow_vl_100_root: /home/avmoura_linux/Documents/unb/sandbox_sam3/ph2_dataset
-  experiment_log_dir: /home/avmoura_linux/Documents/unb/sandbox_sam3/logs_bbox
-  bpe_path: /home/avmoura_linux/Documents/unb/sandbox_sam3/sam3/assets/bpe_simple_vocab_16e6.txt.gz
+  # Caminhos internos do container.
+  # Mapeie seus volumes locais para estes caminhos ao rodar o docker run.
+  root_dir: /workspace
+  
+  # Dataset montado em /workspace/data/ph2
+  ph2_root: ${paths.root_dir}/data/ph2
+  
+  # Logs salvos em /workspace/logs para persistência
+  experiment_log_dir: ${paths.root_dir}/logs/ph2_experiment
+  
+  # O BPE geralmente fica dentro do código fonte copiado para o container
+  bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
 
-# Roboflow dataset configuration
-roboflow_train:
-  num_images: null # Note: This is the number of images used for training. If null, all images are used.
-  # supercategory: ${all_roboflow_supercategories.${string:${submitit.job_array.task_index}}}
+# ============================================================================
+# PH2 Dataset Configuration
+# ============================================================================
+ph2_config:
+  num_images: null # Null usa todas as imagens (PH2 é pequeno, use todas)
+  
+  # Estrutura de pastas esperada dentro do container:
+  # /workspace/data/ph2/train/images/
+  # /workspace/data/ph2/train/_annotations.coco.json
+  train_img_dir: ${paths.ph2_root}/train/
+  train_ann_file: ${paths.ph2_root}/train/_annotations.coco.json
+  
+  val_img_dir: ${paths.ph2_root}/test/
+  val_ann_file: ${paths.ph2_root}/test/_annotations.coco.json
 
   # Training transforms pipeline
   train_transforms:
@@ -71,7 +90,9 @@ roboflow_train:
           mean: ${scratch.train_norm_mean}
           std: ${scratch.train_norm_std}
 
-  # loss config (no mask loss)
+  # Loss config
+  # OBS: PH2 exige segmentação (masks). Se você ativar 'enable_segmentation: True'
+  # abaixo, lembre-se de descomentar a loss de Masks aqui ou no bloco 'loss' original.
   loss:
     _target_: sam3.train.loss.sam3_loss.Sam3LossWrapper
     matcher: ${scratch.matcher}
@@ -81,7 +102,7 @@ roboflow_train:
       alpha: 0.3
       threshold: 0.4
       topk: 4
-    use_o2m_matcher_on_o2m_aux: false # Another option is true
+    use_o2m_matcher_on_o2m_aux: false
     loss_fns_find:
       - _target_: sam3.train.loss.loss_fns.Boxes
         weight_dict:
@@ -90,25 +111,25 @@ roboflow_train:
       - _target_: sam3.train.loss.loss_fns.IABCEMdetr
         weak_loss: False
         weight_dict:
-          loss_ce: 20.0 # Another option is 100.0
+          loss_ce: 20.0
           presence_loss: 20.0
-        pos_weight: 10.0 # Another option is 5.0
+        pos_weight: 10.0
         alpha: 0.25
         gamma: 2
-        use_presence: True  # Change
+        use_presence: True
         pos_focal: false
         pad_n_queries: 200
         pad_scale_pos: 1.0
-
     loss_fn_semantic_seg: null
     scale_by_find_batch_size: ${scratch.scale_by_find_batch_size}
 
 # ============================================================================
-# Different helper parameters and functions
+# Scratch Configuration
 # ============================================================================
 scratch:
-  enable_segmentation: False # NOTE: This is the number of queries used for segmentation NAO ESTA FUNCIONANDO AINDA
-  # Model parameters
+  # ATENÇÃO: Para PH2 (lesões de pele), você provavelmente vai querer isso como True em breve.
+  enable_segmentation: False 
+  
   d_model: 256
   pos_embed:
     _target_: sam3.model.position_encoding.PositionEmbeddingSine
@@ -117,19 +138,17 @@ scratch:
     scale: null
     temperature: 10000
 
-  # Box processing
   use_presence_eval: True
   original_box_postprocessor:
     _target_: sam3.eval.postprocessors.PostProcessImage
-    max_dets_per_img: -1  # infinite detections
+    max_dets_per_img: -1
     use_original_ids: true
     use_original_sizes_box: true
     use_presence: ${scratch.use_presence_eval}
 
-  # Matcher configuration
   matcher:
     _target_: sam3.train.matcher.BinaryHungarianMatcherV2
-    focal: true  # with `focal: true` it is equivalent to BinaryFocalHungarianMatcher
+    focal: true
     cost_class: 2.0
     cost_bbox: 5.0
     cost_giou: 2.0
@@ -138,27 +157,24 @@ scratch:
     stable: False
   scale_by_find_batch_size: True
 
-  # Image processing parameters
   resolution: 1008
   consistent_transform: False
   max_ann_per_img: 200
 
-  # Normalization parameters
   train_norm_mean: [0.5, 0.5, 0.5]
   train_norm_std: [0.5, 0.5, 0.5]
   val_norm_mean: [0.5, 0.5, 0.5]
   val_norm_std: [0.5, 0.5, 0.5]
 
   # Training parameters
-  num_train_workers: 10
+  num_train_workers: 4 # Reduzido para evitar erro de shared memory em Docker padrão
   num_val_workers: 0
-  max_data_epochs: 20
+  max_data_epochs: 50 # PH2 é pequeno, pode precisar de mais épocas
   target_epoch_size: 1500
   hybrid_repeats: 1
   context_length: 2
   gather_pred_via_filesys: false
 
-  # Learning rate and scheduler parameters
   lr_scale: 0.1
   lr_transformer: ${times:8e-4,${scratch.lr_scale}}
   lr_vision_backbone: ${times:2.5e-4,${scratch.lr_scale}}
@@ -174,33 +190,31 @@ scratch:
     _target_: sam3.train.data.collator.collate_fn_api
     _partial_: true
     repeats: ${scratch.hybrid_repeats}
-    dict_key: roboflow100
-    with_seg_masks: ${scratch.enable_segmentation} # Note: Set this to true if using segmentation masks!
+    dict_key: ph2_eval
+    with_seg_masks: ${scratch.enable_segmentation}
 
   gradient_accumulation_steps: 1
-  train_batch_size: 1
+  train_batch_size: 1 # Ajuste conforme sua VRAM (PH2 imagens são grandes)
   collate_fn:
     _target_: sam3.train.data.collator.collate_fn_api
     _partial_: true
     repeats: ${scratch.hybrid_repeats}
     dict_key: all
-    with_seg_masks: ${scratch.enable_segmentation} # Note: Set this to true if using segmentation masks!
+    with_seg_masks: ${scratch.enable_segmentation}
 
 # ============================================================================
 # Trainer Configuration
 # ============================================================================
-
 trainer:
-
   _target_: sam3.train.trainer.Trainer
-  skip_saving_ckpts: true
+  skip_saving_ckpts: false # Alterado para salvar checkpoints, importante para fine-tuning
   empty_gpu_mem_cache_after_eval: True
   skip_first_val: True
-  max_epochs: 40
+  max_epochs: ${scratch.max_data_epochs}
   accelerator: cuda
   seed_value: 123
-  val_epoch_freq: 1
-  mode: val
+  val_epoch_freq: 5 # Validar com mais frequência pois o dataset é pequeno
+  mode: train # Mude para 'val' se for apenas inferência
   gradient_accumulation_steps: ${scratch.gradient_accumulation_steps}
 
   distributed:
@@ -209,7 +223,7 @@ trainer:
     gradient_as_bucket_view: True
 
   loss:
-    all: ${roboflow_train.loss}
+    all: ${ph2_config.loss}
     default:
       _target_: sam3.train.loss.sam3_loss.DummyLoss
 
@@ -218,8 +232,8 @@ trainer:
       _target_: sam3.train.data.torch_dataset.TorchDataset
       dataset:
         _target_: sam3.train.data.sam3_image_dataset.Sam3ImageDataset
-        limit_ids: ${roboflow_train.num_images}
-        transforms: ${roboflow_train.train_transforms}
+        limit_ids: ${ph2_config.num_images}
+        transforms: ${ph2_config.train_transforms}
         load_segmentation: ${scratch.enable_segmentation}
         max_ann_per_img: 500000
         multiplier: 1
@@ -227,8 +241,13 @@ trainer:
         max_val_queries: 50000
         training: true
         use_caching: False
-        img_folder: ${paths.roboflow_vl_100_root}/train/
-        ann_file: ${paths.roboflow_vl_100_root}/train/_annotations.coco.json
+        img_folder: ${ph2_config.train_img_dir}
+        ann_file: ${ph2_config.train_ann_file}
+        # Adicionei prompts padrão para evitar erro se não houver prompt específico
+        coco_json_loader:
+          _target_: sam3.train.data.coco_json_loaders.COCO_FROM_JSON
+          prompts: null 
+          _partial_: true
 
       shuffle: True
       batch_size: ${scratch.train_batch_size}
@@ -245,11 +264,11 @@ trainer:
         coco_json_loader:
           _target_: sam3.train.data.coco_json_loaders.COCO_FROM_JSON
           include_negatives: true
-          category_chunk_size: 2 # Note: You can increase this based on the memory of your GPU.
+          category_chunk_size: 2
           _partial_: true
-        img_folder: ${paths.roboflow_vl_100_root}/test/
-        ann_file: ${paths.roboflow_vl_100_root}/test/_annotations.coco.json
-        transforms: ${roboflow_train.val_transforms}
+        img_folder: ${ph2_config.val_img_dir}
+        ann_file: ${ph2_config.val_ann_file}
+        transforms: ${ph2_config.val_transforms}
         max_ann_per_img: 100000
         multiplier: 1
         training: false
@@ -261,35 +280,34 @@ trainer:
       drop_last: False
       collate_fn: ${scratch.collate_fn_val}
 
-
   model:
     _target_: sam3.model_builder.build_sam3_image_model
     bpe_path: ${paths.bpe_path}
     device: cpus
-    eval_mode: true
-    enable_segmentation: ${scratch.enable_segmentation} # Warning: Enable this if using segmentation.
+    eval_mode: false # False para treino
+    enable_segmentation: ${scratch.enable_segmentation}
 
   meters:
     val:
-      roboflow100:
+      ph2_eval: # Nome deve bater com collate_fn_val dict_key
         detection:
           _target_: sam3.eval.coco_writer.PredictionDumper
           iou_type: "bbox"
-          dump_dir: /home/avmoura_linux/Documents/unb/sandbox_sam3/logs_bbox/dumps/roboflow
+          dump_dir: ${paths.experiment_log_dir}/dumps/ph2
           merge_predictions: True
           postprocessor: ${scratch.original_box_postprocessor}
           gather_pred_via_filesys: ${scratch.gather_pred_via_filesys}
           maxdets: 100
           pred_file_evaluators:
             - _target_: sam3.eval.coco_eval_offline.CocoEvaluatorOfflineWithPredFileEvaluators
-              gt_path: ${paths.roboflow_vl_100_root}/test/_annotations.coco.json
+              gt_path: ${ph2_config.val_ann_file}
               tide: False
               iou_type: "bbox"
 
   optim:
     amp:
       enabled: True
-      amp_dtype: bfloat16
+      amp_dtype: float16
 
     optimizer:
       _target_: torch.optim.AdamW
@@ -310,7 +328,7 @@ trainer:
 
     options:
       lr:
-        - scheduler:  # transformer and class_embed
+        - scheduler:
             _target_: sam3.train.optim.schedulers.InverseSquareRootParamScheduler
             base_lr: ${scratch.lr_transformer}
             timescale: ${scratch.scheduler_timescale}
@@ -345,27 +363,23 @@ trainer:
           module_cls_names: ['torch.nn.LayerNorm']
 
   checkpoint:
-    save_dir: /home/avmoura_linux/Documents/unb/sandbox_sam3/logs_bbox/checkpoints
-    save_freq: 0  # 0 only last checkpoint is saved.
+    save_dir: ${paths.experiment_log_dir}/checkpoints
+    save_freq: 0
 
   logging:
     tensorboard_writer:
       _target_: sam3.train.utils.logger.make_tensorboard_logger
-      log_dir: /home/avmoura_linux/Documents/unb/sandbox_sam3/logs_bbox/tensorboard
+      log_dir: ${paths.experiment_log_dir}/tensorboard
       flush_secs: 120
       should_log: True
     wandb_writer: null
-    log_dir: /home/avmoura_linux/Documents/unb/sandbox_sam3/logs_bbox
+    log_dir: ${paths.experiment_log_dir}
     log_freq: 10
-
-# ============================================================================
-# Launcher and Submitit Configuration
-# ============================================================================
 
 launcher:
   num_nodes: 1
   gpus_per_node: 2
-  experiment_log_dir: /home/avmoura_linux/Documents/unb/sandbox_sam3/logs_bbox
+  experiment_log_dir: ${paths.experiment_log_dir}
   multiprocessing_context: forkserver
 
 submitit:
@@ -377,113 +391,6 @@ submitit:
   cpus_per_task: 10
   port_range: [10000, 65000]
   constraint: null
-  # Uncomment for job array configuration
   job_array:
-    num_tasks: 100
+    num_tasks: 1
     task_index: 0
-
-# ============================================================================
-# Available Roboflow Supercategories (for reference)
-# ============================================================================
-
-# all_roboflow_supercategories:
-#   - -grccs
-#   - zebrasatasturias
-#   - cod-mw-warzone
-#   - canalstenosis
-#   - label-printing-defect-version-2
-#   - new-defects-in-wood
-#   - orionproducts
-#   - aquarium-combined
-#   - varroa-mites-detection--test-set
-#   - clashroyalechardetector
-#   - stomata-cells
-#   - halo-infinite-angel-videogame
-#   - pig-detection
-#   - urine-analysis1
-#   - aerial-sheep
-#   - orgharvest
-#   - actions
-#   - mahjong
-#   - liver-disease
-#   - needle-base-tip-min-max
-#   - wheel-defect-detection
-#   - aircraft-turnaround-dataset
-#   - xray
-#   - wildfire-smoke
-#   - spinefrxnormalvindr
-#   - ufba-425
-#   - speech-bubbles-detection
-#   - train
-#   - pill
-#   - truck-movement
-#   - car-logo-detection
-#   - inbreast
-#   - sea-cucumbers-new-tiles
-#   - uavdet-small
-#   - penguin-finder-seg
-#   - aerial-airport
-#   - bibdetection
-#   - taco-trash-annotations-in-context
-#   - bees
-#   - recode-waste
-#   - screwdetectclassification
-#   - wine-labels
-#   - aerial-cows
-#   - into-the-vale
-#   - gwhd2021
-#   - lacrosse-object-detection
-#   - defect-detection
-#   - dataconvert
-#   - x-ray-id
-#   - ball
-#   - tube
-#   - 2024-frc
-#   - crystal-clean-brain-tumors-mri-dataset
-#   - grapes-5
-#   - human-detection-in-floods
-#   - buoy-onboarding
-#   - apoce-aerial-photographs-for-object-detection-of-construction-equipment
-#   - l10ul502
-#   - floating-waste
-#   - deeppcb
-#   - ism-band-packet-detection
-#   - weeds4
-#   - invoice-processing
-#   - thermal-cheetah
-#   - tomatoes-2
-#   - marine-sharks
-#   - peixos-fish
-#   - sssod
-#   - aerial-pool
-#   - countingpills
-#   - asphaltdistressdetection
-#   - roboflow-trained-dataset
-#   - everdaynew
-#   - underwater-objects
-#   - soda-bottles
-#   - dentalai
-#   - jellyfish
-#   - deepfruits
-#   - activity-diagrams
-#   - circuit-voltages
-#   - all-elements
-#   - macro-segmentation
-#   - exploratorium-daphnia
-#   - signatures
-#   - conveyor-t-shirts
-#   - fruitjes
-#   - grass-weeds
-#   - infraredimageofpowerequipment
-#   - 13-lkc01
-#   - wb-prova
-#   - flir-camera-objects
-#   - paper-parts
-#   - football-player-detection
-#   - trail-camera
-#   - smd-components
-#   - water-meter
-#   - nih-xray
-#   - the-dreidel-project
-#   - electric-pylon-detection-in-rsi
-#   - cable-damage

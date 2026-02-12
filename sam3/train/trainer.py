@@ -297,6 +297,14 @@ class Trainer:
             raise ValueError(f"Unsupported accelerator: {accelerator}")
 
     def _setup_ddp_distributed_training(self, distributed_conf, accelerator):
+        # --- ADICIONE ISTO ---
+        import torch.distributed as dist
+        if dist.is_initialized() and dist.get_world_size() == 1:
+            logging.info("World size is 1. Skipping DDP wrapper.")
+            return
+        # ---------------------
+
+        assert isinstance(self.model, torch.nn.Module)
         assert isinstance(self.model, torch.nn.Module)
 
         self.model = nn.parallel.DistributedDataParallel(

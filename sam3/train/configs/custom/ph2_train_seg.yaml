@@ -201,8 +201,8 @@ scratch:
     dict_key: ph2_eval
     with_seg_masks: ${scratch.enable_segmentation}
 
-  gradient_accumulation_steps: 1
-  train_batch_size: 4
+  gradient_accumulation_steps: 4
+  train_batch_size: 1 # Era 4 mudei para 1
   collate_fn:
     _target_: sam3.train.data.collator.collate_fn_api
     _partial_: true
@@ -245,8 +245,8 @@ trainer:
         load_segmentation: ${scratch.enable_segmentation}
         max_ann_per_img: 500000
         multiplier: 1
-        max_train_queries: 50000
-        max_val_queries: 50000
+        max_train_queries: 50  # 50000
+        max_val_queries: 50 #50000
         training: true
         use_caching: False
         img_folder: ${ph2_config.train_img_dir}

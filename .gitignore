@@ -146,6 +146,7 @@ cache/
 runs/
 tensorboard/
 old_logs/
+ph2_train_seg/
 
 #images
 utils/visual_results_debug

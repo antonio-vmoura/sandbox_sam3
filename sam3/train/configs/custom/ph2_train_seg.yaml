@@ -146,7 +146,7 @@
       max_dets_per_img: 100
       iou_type: "segm"
       use_original_ids: false
-      use_original_sizes_box: false
+      use_original_sizes_box: true
       use_original_sizes_mask: true
       detection_threshold: 0.3
       use_presence: ${scratch.use_presence_eval}

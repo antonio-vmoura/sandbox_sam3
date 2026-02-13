@@ -11,8 +11,8 @@ LOCAL_PATH = "/home/avmoura_linux/Documents/unb/sandbox_sam3"
 
 CONFIG = {
     "images_dir": Path(f"{LOCAL_PATH}/ph2_dataset/test/"),
-    # "pred_json": Path(f"{LOCAL_PATH}/logs/old_logs/detection/dumps/ph2/coco_predictions_bbox.json"),
-    "pred_json": Path(f"{LOCAL_PATH}/logs/ph2_train_seg/dumps/ph2/coco_predictions_segm.json"),
+    "pred_json": Path(f"{LOCAL_PATH}/logs/ph2_train_bbox/dumps/ph2/coco_predictions_bbox.json"),
+    # "pred_json": Path(f"{LOCAL_PATH}/logs/ph2_train_seg/dumps/ph2/coco_predictions_segm.json"),
     "gt_json": Path(f"{LOCAL_PATH}/ph2_dataset/test/_annotations.coco.json"),
     "output_dir": Path(f"{LOCAL_PATH}/logs/visual_results"),
     "score_threshold": 0.45,

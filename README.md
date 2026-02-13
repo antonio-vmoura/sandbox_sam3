@@ -64,3 +64,12 @@ docker run --gpus all -it --rm \
 Os logs, checkpoints e resultados de validação serão salvos automaticamente na pasta `./logs`.
 
 <!-- rsync -avz --progress -e "ssh -p 13508 -v" antoniovinicius@164.41.75.221:/home/antoniovinicius/projects/sandbox_sam3/logs/ph2_train_bbox /home/avmoura_linux/Documents/unb/sandbox_sam3 -->
+
+
+<!-- screen -S treino
+
+<comando docker>
+
+Sair e deixar rodando: Pressione Ctrl + A, depois Pressione D.
+
+screen -r treino -->

@@ -8,7 +8,7 @@
   paths:
     root_dir: /workspace
     ph2_root: ${paths.root_dir}/data/ph2
-    experiment_log_dir: ${paths.root_dir}/logs/ph2_train_seg
+    experiment_log_dir: ${paths.root_dir}/logs/ph2_train_seg_1000
     bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
 
   # ============================================================================
@@ -174,7 +174,7 @@
     # Workers
     num_train_workers: 2 #4 #8
     num_val_workers: 4
-    max_data_epochs: 50
+    max_data_epochs: 1000
     target_epoch_size: 1500
     hybrid_repeats: 1
     context_length: 2
@@ -372,7 +372,7 @@
 
     checkpoint:
       save_dir: ${paths.experiment_log_dir}/checkpoints
-      save_freq: 0
+      save_freq: 100
 
     logging:
       tensorboard_writer:

@@ -8,7 +8,7 @@
   paths:
     root_dir: /workspace
     ph2_root: ${paths.root_dir}/data/ph2
-    experiment_log_dir: ${paths.root_dir}/logs/ph2_train_seg_500
+    experiment_log_dir: ${paths.root_dir}/logs/ph2_train_seg_500_2
     bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
 
   # ============================================================================

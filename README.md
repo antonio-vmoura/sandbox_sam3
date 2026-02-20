@@ -1,24 +1,59 @@
-# SAM3 Fine-Tuning (PH2 Dataset)
+# SAM3 Fine-Tuning on the PH2 Dataset
 
-Scripts para treinamento do modelo SAM3 no dataset de lesões de pele PH2.
+This repository provides scripts and configuration files for fine-tuning the **SAM3** model on the **PH2 dataset**, focusing on skin lesion segmentation.
 
-## Requisitos
-* Docker com suporte a NVIDIA GPU.
-* Dataset PH2 localizado em `./ph2_dataset`.
-* Token do Hugging Face.
+The goal is to evaluate how well SAM3 adapts to medical images with limited data and high visual variability.
 
 ---
 
-## Como Executar
+## Overview
 
-### 1. Treinamento de Segmentação
-*Foca na geração de máscaras precisas (Batch=1).*
+The training pipeline includes:
+
+* Loading and preprocessing the PH2 dataset
+* Fine-tuning SAM3 for lesion segmentation
+* Automatic saving of checkpoints and logs
+* Fully reproducible execution via Docker with GPU support
+
+---
+
+## Requirements
+
+* Docker with NVIDIA GPU support
+* NVIDIA Container Toolkit installed
+* Hugging Face access token
+* PH2 dataset available at:
+
+```
+./ph2_dataset
+```
+
+---
+
+## Expected Project Structure
+
+```
+sandbox_sam3/
+│
+├── logs/               # Training outputs
+├── ph2_dataset/        # PH2 dataset
+├── sam3/               # Model source code
+└── utils/              # Useful scripts
+```
+
+---
+
+## Training
+
+Training is executed through Docker to ensure reproducibility.
+
+### Run segmentation training
 
 ```bash
 docker run --gpus '"device=0"' -it --rm \
   --ipc=host \
   --user $(id -u):$(id -g) \
-  -e HUGGING_FACE_HUB_TOKEN=SEU_TOKEN_HUGGINGFACE \
+  -e HUGGING_FACE_HUB_TOKEN=YOUR_HF_TOKEN \
   -e HF_HOME=/workspace/cache/huggingface \
   -e TORCH_HOME=/workspace/cache/torch \
   -e HOME=/workspace/cache \
@@ -31,45 +66,57 @@ docker run --gpus '"device=0"' -it --rm \
   -v /etc/passwd:/etc/passwd:ro \
   -v /etc/group:/etc/group:ro \
   sam3-ph2-gpu \
-  python sam3/train/train.py -c configs/custom/ph2_train_seg.yaml --use-cluster 0
-
+  python sam3/train/train.py \
+  -c configs/custom/ph2_train_seg.yaml \
+  --use-cluster 0
 ```
 
-### 2. Treinamento de Detecção (BBox)
+---
 
-*Foca na predição de caixas delimitadoras.*
+## Outputs
+
+All outputs are automatically saved to:
+
+```
+./logs
+```
+
+Each run stores:
+
+* model checkpoints
+* validation metrics
+* training logs
+
+---
+
+## Running on a Remote Server
+
+### Run training in the background
+
+Create a screen session:
 
 ```bash
-docker run --gpus all -it --rm \
-  --ipc=host \
-  --user $(id -u):$(id -g) \
-  -e HUGGING_FACE_HUB_TOKEN=SEU_TOKEN_HUGGINGFACE \
-  -e HF_HOME=/workspace/cache/huggingface \
-  -e TORCH_HOME=/workspace/cache/torch \
-  -e HOME=/workspace/cache \
-  -v $(pwd)/ph2_dataset:/workspace/data/ph2 \
-  -v $(pwd)/logs:/workspace/logs \
-  -v $(pwd)/sam3:/workspace/sam3 \
-  -v $(pwd)/configs:/workspace/configs \
-  -v $(pwd)/sam3_cache:/workspace/cache \
-  -v /etc/passwd:/etc/passwd:ro \
-  -v /etc/group:/etc/group:ro \
-  sam3-ph2-gpu \
-  python sam3/train/train.py -c configs/custom/ph2_train_bbox.yaml --use-cluster 0
-
+screen -S training
 ```
 
-## Saídas
+Run the Docker command normally. Detach while keeping the process running:
 
-Os logs, checkpoints e resultados de validação serão salvos automaticamente na pasta `./logs`.
+```
+Ctrl + A, then D
+```
 
-<!-- rsync -avz --progress -e "ssh -p 13508 -v" antoniovinicius@164.41.75.221:/home/antoniovinicius/projects/sandbox_sam3/logs/ph2_train_bbox /home/avmoura_linux/Documents/unb/sandbox_sam3 -->
+Reattach later:
 
+```bash
+screen -r training
+```
 
-<!-- screen -S treino
+---
 
-<comando docker>
+### Copy results from the server
 
-Sair e deixar rodando: Pressione Ctrl + A, depois Pressione D.
+```bash
+rsync -avz --progress -e "ssh -p 13508 -v" antoniovinicius@164.41.75.221:/home/antoniovinicius/projects/sandbox_sam3/logs//ph2_train_seg_500 /home/avmoura_linux/Documents/unb/sandbox_sam3
+```
 
-screen -r treino -->
+---

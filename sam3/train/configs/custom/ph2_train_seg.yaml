@@ -182,9 +182,9 @@
 
     lr_scale: 0.1
     lr_transformer: ${times:1e-4,${scratch.lr_scale}}
-    lr_vision_backbone: ${times:2.5e-5,${scratch.lr_scale}}
-    lr_language_backbone: ${times:1e-5,${scratch.lr_scale}}
-    lrd_vision_backbone: 0.9
+    lr_vision_backbone: 0.0
+    lr_language_backbone: 0.0
+    lrd_vision_backbone: 1.0
     wd: 0.1
     scheduler_timescale: 20
     scheduler_warmup: 20
@@ -198,7 +198,7 @@
       dict_key: ph2_eval
       with_seg_masks: ${scratch.enable_segmentation}
 
-    gradient_accumulation_steps: 1 #1
+    gradient_accumulation_steps: 8 #1
     train_batch_size: 1 #4
     collate_fn:
       _target_: sam3.train.data.collator.collate_fn_api

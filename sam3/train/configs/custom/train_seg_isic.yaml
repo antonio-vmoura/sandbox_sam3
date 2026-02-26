@@ -7,19 +7,19 @@
   # ============================================================================
   paths:
     root_dir: /workspace
-    ph2_root: ${paths.root_dir}/data/ph2
-    experiment_log_dir: ${paths.root_dir}/logs/ph2_train_seg_500
+    isic_root: ${paths.root_dir}/data/isic
+    experiment_log_dir: ${paths.root_dir}/logs/isic_train_seg
     bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
 
   # ============================================================================
-  # PH2 Dataset Configuration
+  # ISIC Dataset Configuration
   # ============================================================================
-  ph2_config:
+  isic_config:
     num_images: null 
-    train_img_dir: ${paths.ph2_root}/train/
-    train_ann_file: ${paths.ph2_root}/train/_annotations.coco.json
-    val_img_dir: ${paths.ph2_root}/test/
-    val_ann_file: ${paths.ph2_root}/test/_annotations.coco.json
+    train_img_dir: ${paths.isic_root}/train/
+    train_ann_file: ${paths.isic_root}/train/_annotations.coco.json
+    val_img_dir: ${paths.isic_root}/test/
+    val_ann_file: ${paths.isic_root}/test/_annotations.coco.json
 
     # Training transforms
     train_transforms:
@@ -195,7 +195,7 @@
       _target_: sam3.train.data.collator.collate_fn_api
       _partial_: true
       repeats: ${scratch.hybrid_repeats}
-      dict_key: ph2_eval
+      dict_key: isic_eval
       with_seg_masks: ${scratch.enable_segmentation}
 
     gradient_accumulation_steps: 1 #1
@@ -228,7 +228,7 @@
       gradient_as_bucket_view: True
 
     loss:
-      all: ${ph2_config.loss}
+      all: ${isic_config.loss}
       default:
         _target_: sam3.train.loss.sam3_loss.DummyLoss
 
@@ -237,8 +237,8 @@
         _target_: sam3.train.data.torch_dataset.TorchDataset
         dataset:
           _target_: sam3.train.data.sam3_image_dataset.Sam3ImageDataset
-          limit_ids: ${ph2_config.num_images}
-          transforms: ${ph2_config.train_transforms}
+          limit_ids: ${isic_config.num_images}
+          transforms: ${isic_config.train_transforms}
           load_segmentation: ${scratch.enable_segmentation}
           max_ann_per_img: 500000
           multiplier: 1
@@ -246,8 +246,8 @@
           max_val_queries: 50000
           training: true
           use_caching: False
-          img_folder: ${ph2_config.train_img_dir}
-          ann_file: ${ph2_config.train_ann_file}
+          img_folder: ${isic_config.train_img_dir}
+          ann_file: ${isic_config.train_ann_file}
           coco_json_loader:
             _target_: sam3.train.data.coco_json_loaders.COCO_FROM_JSON
             prompts: null
@@ -270,9 +270,9 @@
             include_negatives: true
             category_chunk_size: 2
             _partial_: true
-          img_folder: ${ph2_config.val_img_dir}
-          ann_file: ${ph2_config.val_ann_file}
-          transforms: ${ph2_config.val_transforms}
+          img_folder: ${isic_config.val_img_dir}
+          ann_file: ${isic_config.val_ann_file}
+          transforms: ${isic_config.val_transforms}
           max_ann_per_img: 100000
           multiplier: 1
           training: false
@@ -293,22 +293,22 @@
 
     meters:
       val:
-        ph2_eval:
+        isic_eval:
           detection:
             _target_: sam3.eval.coco_writer.PredictionDumper
             iou_type: "segm"
-            dump_dir: ${paths.experiment_log_dir}/dumps/ph2
+            dump_dir: ${paths.experiment_log_dir}/dumps/isic
             merge_predictions: True
             postprocessor: ${scratch.mask_postprocessor}
             gather_pred_via_filesys: ${scratch.gather_pred_via_filesys}
             maxdets: 100
             pred_file_evaluators:
               - _target_: sam3.eval.coco_eval_offline.CocoEvaluatorOfflineWithPredFileEvaluators
-                gt_path: ${ph2_config.val_ann_file}
+                gt_path: ${isic_config.val_ann_file}
                 tide: False
                 iou_type: "bbox"
               - _target_: sam3.eval.coco_eval_offline.CocoEvaluatorOfflineWithPredFileEvaluators
-                gt_path: ${ph2_config.val_ann_file}
+                gt_path: ${isic_config.val_ann_file}
                 tide: False
                 iou_type: "segm"
 

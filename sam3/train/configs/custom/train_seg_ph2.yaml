@@ -18,8 +18,8 @@
     num_images: null 
     train_img_dir: ${paths.ph2_root}/train/
     train_ann_file: ${paths.ph2_root}/train/_annotations.coco.json
-    val_img_dir: ${paths.ph2_root}/test/
-    val_ann_file: ${paths.ph2_root}/test/_annotations.coco.json
+    val_img_dir: ${paths.ph2_root}/valid/
+    val_ann_file: ${paths.ph2_root}/valid/_annotations.coco.json
 
     # Training transforms
     train_transforms:

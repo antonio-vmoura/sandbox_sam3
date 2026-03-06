@@ -139,7 +139,7 @@ sam3_logs/
 *.npy
 *.npz
 
-# Logs
+# Logs and cache
 logs/
 logs*/
 cache/
@@ -147,6 +147,8 @@ runs/
 tensorboard/
 old_logs/
 ph2_train_seg/
+
+sam3_cache/
 
 #images
 utils/visual_results_debug

@@ -130,3 +130,14 @@ source venv/bin/activate
 ```
 
 ---
+
+### Analyze GPU usage
+
+```bash
+
+nvidia-smi
+nvtop
+
+```
+
+---

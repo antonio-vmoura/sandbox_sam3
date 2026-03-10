@@ -30,8 +30,8 @@
               _target_: sam3.train.transforms.filter_query_transforms.FilterCrowds
           - _target_: sam3.train.transforms.segmentation.DecodeRle
           - _target_: sam3.train.transforms.point_sampling.RandomizeInputBbox
-            box_noise_std: 0.2  # Era 0.1. Aumentar força o modelo a ser mais robusto.
-            box_noise_max: 50   # Era 20. Permite caixas mais "erradas" no treino.
+            box_noise_std: 0.1  # Era 0.1. Aumentar força o modelo a ser mais robusto.
+            box_noise_max: 20   # Era 20. Permite caixas mais "erradas" no treino.
           - _target_: sam3.train.transforms.basic_for_api.RandomResizeAPI
             sizes:
               _target_: sam3.train.transforms.basic.get_random_resize_scales
@@ -76,6 +76,7 @@
             std: ${scratch.train_norm_std}
 
     # Loss config
+    # Loss config corrigida para Segmentação (ativa todos os parâmetros)
     loss:
       _target_: sam3.train.loss.sam3_loss.Sam3LossWrapper
       matcher: ${scratch.matcher}
@@ -87,12 +88,10 @@
         topk: 4
       use_o2m_matcher_on_o2m_aux: false
       loss_fns_find:
-        # Loss Boxes
         - _target_: sam3.train.loss.loss_fns.Boxes
           weight_dict:
             loss_bbox: 5.0
             loss_giou: 2.0
-        # Loss Classification
         - _target_: sam3.train.loss.loss_fns.IABCEMdetr
           weak_loss: False
           weight_dict:
@@ -105,18 +104,26 @@
           pos_focal: false
           pad_n_queries: 200
           pad_scale_pos: 1.0
-        # Loss Masks (Segmentação)
         - _target_: sam3.train.loss.loss_fns.Masks
           focal_alpha: 0.25
           focal_gamma: 2.0
           weight_dict:
-            loss_mask: 5.0
-            loss_dice: 5.0
+            loss_mask: 200.0  # O padrão do SAM3 usa 200.0 aqui
+            loss_dice: 10.0   # O padrão do SAM3 usa 10.0 aqui
           compute_aux: false
-        # REMOVIDA: Loss IoU que causava erro de importação.
-        # Ao usar 1 GPU, o erro de "unused parameters" não ocorrerá.
-
-      loss_fn_semantic_seg: null
+    
+      loss_fn_semantic_seg:
+        _target_: sam3.losses.loss_fns.SemanticSegCriterion
+        presence_head: True
+        presence_loss: False
+        focal: True
+        focal_alpha: 0.6
+        focal_gamma: 2.0
+        downsample: False
+        weight_dict:
+          loss_semantic_seg: 20.0
+          loss_semantic_presence: 1.0
+          loss_semantic_dice: 30.0
       scale_by_find_batch_size: ${scratch.scale_by_find_batch_size}
 
   # ============================================================================
@@ -172,17 +179,17 @@
     val_norm_std: [0.5, 0.5, 0.5]
 
     # Workers
-    num_train_workers: 2 #4 #8
+    num_train_workers: 10 #4 #8
     num_val_workers: 4
-    max_data_epochs: 500
+    max_data_epochs: 100
     target_epoch_size: 1500
     hybrid_repeats: 1
     context_length: 2
     gather_pred_via_filesys: false
 
     lr_scale: 0.1
-    lr_transformer: ${times:1e-4,${scratch.lr_scale}}
-    lr_vision_backbone: ${times:2.5e-5,${scratch.lr_scale}}
+    lr_transformer: ${times:8e-4,${scratch.lr_scale}}
+    lr_vision_backbone: ${times:2.5e-4,${scratch.lr_scale}}
     lr_language_backbone: ${times:1e-5,${scratch.lr_scale}}
     lrd_vision_backbone: 0.9
     wd: 0.1
@@ -190,7 +197,7 @@
     scheduler_warmup: 20
     scheduler_cooldown: 20
 
-    val_batch_size: 2
+    val_batch_size: 1
     collate_fn_val:
       _target_: sam3.train.data.collator.collate_fn_api
       _partial_: true
@@ -372,7 +379,7 @@
 
     checkpoint:
       save_dir: ${paths.experiment_log_dir}/checkpoints
-      save_freq: 100
+      save_freq: 10
 
     logging:
       tensorboard_writer:

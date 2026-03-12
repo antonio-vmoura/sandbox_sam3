@@ -8,7 +8,7 @@ defaults:
 paths:
   root_dir: /workspace
   roboflow_vl_100_root: ${paths.root_dir}/data
-  experiment_log_dir: ${paths.root_dir}/logs/isic_10k_all_gpus_3
+  experiment_log_dir: ${paths.root_dir}/logs/isic_10k_all_gpus_4
   bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
 
 # Roboflow dataset configuration (Adaptado para ISIC 10k)

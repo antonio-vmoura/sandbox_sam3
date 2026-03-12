@@ -141,7 +141,7 @@ rsync -avz --progress -e "ssh -p 13508 -v" antoniovinicius@164.41.75.221:/home/a
 
 ---
 
-### Create venv
+### Environment Setup
 
 ```bash
 python3.11 -m venv venv
@@ -151,7 +151,7 @@ source venv/bin/activate
 
 ---
 
-### Analyze GPU usage
+### Hardware Monitoring
 
 ```bash
 

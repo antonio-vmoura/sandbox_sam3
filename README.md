@@ -10,7 +10,7 @@ The goal is to evaluate how well SAM3 adapts to medical images with limited data
 
 The training pipeline includes:
 
-* Loading and preprocessing the PH2 dataset
+* Loading and preprocessing the dataset
 * Fine-tuning SAM3 for lesion segmentation
 * Automatic saving of checkpoints and logs
 * Fully reproducible execution via Docker with GPU support
@@ -22,10 +22,10 @@ The training pipeline includes:
 * Docker with NVIDIA GPU support
 * NVIDIA Container Toolkit installed
 * Hugging Face access token
-* PH2 dataset available at:
+* Dataset available at:
 
 ```
-./ph2_dataset
+./datasets/<dataset_name>
 ```
 
 ---
@@ -36,7 +36,7 @@ The training pipeline includes:
 sandbox_sam3/
 │
 ├── logs/               # Training outputs
-├── ph2_dataset/        # PH2 dataset
+├── dataset/            # Dataset
 ├── sam3/               # Model source code
 └── utils/              # Useful scripts
 ```
@@ -65,7 +65,7 @@ docker run --gpus all -it --rm \
   -v $(pwd)/sam3_cache:/workspace/cache \
   -v /etc/passwd:/etc/passwd:ro \
   -v /etc/group:/etc/group:ro \
-  sam3-ph2-gpu \
+  sam3_ft \
   python sam3/train/train.py -c configs/custom/sam3_ft_isic_10k.yaml --use-cluster 0 2>&1 | tee logs/sam3_ft_isic_10k.log
 ```
 
@@ -101,12 +101,6 @@ All outputs are automatically saved to:
 ./logs
 ```
 
-Each run stores:
-
-* model checkpoints
-* validation metrics
-* training logs
-
 ---
 
 ## Running on a Remote Server
@@ -116,7 +110,7 @@ Each run stores:
 Create a screen session:
 
 ```bash
-screen -S ft_sam3
+screen -S sam3_ft
 ```
 
 Run the Docker command normally. Detach while keeping the process running:
@@ -128,7 +122,7 @@ Ctrl + A, then D
 Reattach later:
 
 ```bash
-screen -r ft_sam3
+screen -r sam3_ft
 ```
 
 ---

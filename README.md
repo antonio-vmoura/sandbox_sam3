@@ -45,7 +45,7 @@ sandbox_sam3/
 
 ## Training
 
-Training is executed through Docker to ensure reproducibility.
+Training is executed through Docker to ensure reproducibility and environment isolation. Don't forget to replace YOUR_HF_TOKEN with your actual Hugging Face token.
 
 ### Option A: Run training using ALL available GPUs
 

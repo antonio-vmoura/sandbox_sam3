@@ -1,6 +1,6 @@
 # SAM3 Fine-Tuning on the PH2 Dataset
 
-This repository provides scripts and configuration files for fine-tuning the **SAM3** model on the **PH2 dataset**, focusing on skin lesion segmentation.
+This repository provides scripts and configuration files for fine-tuning the **SAM3** model in a custom dataset, focusing on skin lesion segmentation.
 
 The goal is to evaluate how well SAM3 adapts to medical images with limited data and high visual variability.
 
@@ -140,7 +140,6 @@ rsync -avz --progress -e "ssh -p 13508 -v" antoniovinicius@164.41.75.221:/home/a
 ```bash
 python3.11 -m venv venv
 source venv/bin/activate
-
 ```
 
 ---
@@ -148,10 +147,8 @@ source venv/bin/activate
 ### Hardware Monitoring
 
 ```bash
-
 nvidia-smi
 nvtop
-
 ```
 
 ---

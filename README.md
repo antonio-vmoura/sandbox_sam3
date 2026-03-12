@@ -116,7 +116,7 @@ Each run stores:
 Create a screen session:
 
 ```bash
-screen -S training
+screen -S ft_sam3
 ```
 
 Run the Docker command normally. Detach while keeping the process running:
@@ -128,7 +128,7 @@ Ctrl + A, then D
 Reattach later:
 
 ```bash
-screen -r training
+screen -r ft_sam3
 ```
 
 ---

@@ -1,4 +1,4 @@
-# SAM3 Fine-Tuning on the PH2 Dataset
+# SAM3 Fine-Tuning
 
 This repository provides scripts and configuration files for fine-tuning the **SAM3** model in a custom dataset, focusing on skin lesion segmentation.
 

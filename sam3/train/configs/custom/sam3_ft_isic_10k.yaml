@@ -30,7 +30,7 @@ defaults:
 paths:
   root_dir: /workspace
   dataset_path: ${paths.root_dir}/data
-  experiment_log_dir: ${paths.root_dir}/logs/sam3_ft_isic_10k_100
+  experiment_log_dir: ${paths.root_dir}/logs/sam3_ft_isic_10k_50
   bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
 
 # Roboflow dataset configuration

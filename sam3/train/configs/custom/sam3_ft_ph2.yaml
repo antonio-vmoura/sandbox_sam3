@@ -205,7 +205,7 @@ scratch:
   num_train_workers: 12 # Aumentado para aproveitar os 24 cores / 48 threads
   num_val_workers: 4
   max_data_epochs: 100 #EPOCAS
-  target_epoch_size: 1500
+  target_epoch_size: 126
   hybrid_repeats: 1
   context_length: 2
   gather_pred_via_filesys: false
@@ -251,7 +251,7 @@ trainer:
   max_epochs: 100 # Aumentado levemente para 10k imagens, ajuste conforme a convergência
   accelerator: cuda
   seed_value: 123
-  val_epoch_freq: 1
+  val_epoch_freq: 5
   mode: train
   gradient_accumulation_steps: ${scratch.gradient_accumulation_steps}
 

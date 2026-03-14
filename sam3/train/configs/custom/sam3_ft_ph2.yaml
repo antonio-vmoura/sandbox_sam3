@@ -13,7 +13,7 @@ defaults:
 #   -e HF_HOME=/workspace/cache/huggingface \
 #   -e TORCH_HOME=/workspace/cache/torch \
 #   -e HOME=/workspace/cache \
-#   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+#   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \   --> Esse comando esta causando problemas na máquina 01
 #   -v $(pwd)/datasets/ph2:/workspace/data \
 #   -v $(pwd)/logs:/workspace/logs \
 #   -v $(pwd)/sam3:/workspace/sam3 \

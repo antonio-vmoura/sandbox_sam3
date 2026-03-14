@@ -8,7 +8,7 @@ defaults:
 paths:
   root_dir: /workspace
   roboflow_vl_100_root: ${paths.root_dir}/data
-  experiment_log_dir: ${paths.root_dir}/logs/sam3_ft_isic_10k_1
+  experiment_log_dir: ${paths.root_dir}/logs/sam3_ft_isic_10k_100
   bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
 
 # Roboflow dataset configuration (Adaptado para ISIC 10k)
@@ -170,7 +170,7 @@ scratch:
   # Training parameters
   num_train_workers: 12 # Aumentado para aproveitar os 24 cores / 48 threads
   num_val_workers: 4
-  max_data_epochs: 20
+  max_data_epochs: 100 #EPOCAS
   target_epoch_size: 1500
   hybrid_repeats: 1
   context_length: 2
@@ -214,10 +214,10 @@ trainer:
   skip_saving_ckpts: false # Mudei para false para você poder salvar os pesos do fine-tuning
   empty_gpu_mem_cache_after_eval: True
   skip_first_val: True
-  max_epochs: 20 # Aumentado levemente para 10k imagens, ajuste conforme a convergência
+  max_epochs: 100 # Aumentado levemente para 10k imagens, ajuste conforme a convergência
   accelerator: cuda
   seed_value: 123
-  val_epoch_freq: 1
+  val_epoch_freq: 5
   mode: train
   gradient_accumulation_steps: ${scratch.gradient_accumulation_steps}
 
@@ -363,7 +363,7 @@ trainer:
 
   checkpoint:
     save_dir: ${launcher.experiment_log_dir}/checkpoints
-    save_freq: 1  # Vai salvar a cada x épocas
+    save_freq: 10  # Vai salvar a cada x épocas
 
   logging:
     tensorboard_writer:

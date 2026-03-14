@@ -43,6 +43,19 @@ sandbox_sam3/
 
 ---
 
+## Building the Docker Image
+
+Before running the training scripts, you need to build the Docker image that contains the CUDA environment, PyTorch, and all necessary dependencies.
+
+Run the following command from the root of the repository:
+
+```bash
+docker build -t sam3_ft .
+
+```
+
+---
+
 ## Training
 
 Training is executed through Docker to ensure reproducibility and environment isolation. Don't forget to replace YOUR_HF_TOKEN with your actual Hugging Face token.

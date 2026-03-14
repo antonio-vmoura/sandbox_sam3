@@ -167,6 +167,17 @@ scratch:
     use_original_sizes_box: true
     use_presence: ${scratch.use_presence_eval}
 
+  mask_postprocessor_thresholded:
+    _target_: sam3.eval.postprocessors.PostProcessImage
+    max_dets_per_img: -1 
+    iou_type: "segm"
+    use_original_ids: false
+    use_original_sizes_box: false
+    use_original_sizes_mask: true
+    convert_mask_to_rle: True
+    detection_threshold: 0.3
+    use_presence: ${scratch.use_presence_eval}
+
   # Matcher configuration
   matcher:
     _target_: sam3.train.matcher.BinaryHungarianMatcherV2
@@ -317,14 +328,18 @@ trainer:
           iou_type: "segm" # Mudado para segm
           dump_dir: ${launcher.experiment_log_dir}/dumps
           merge_predictions: True
-          postprocessor: ${scratch.original_box_postprocessor}
+          postprocessor: ${scratch.mask_postprocessor_thresholded}
           gather_pred_via_filesys: ${scratch.gather_pred_via_filesys}
           maxdets: 100
           pred_file_evaluators:
-            - _target_: sam3.eval.coco_eval_offline.CocoEvaluatorOfflineWithPredFileEvaluators
-              gt_path: ${paths.dataset_path}/valid/_annotations.coco.json
-              tide: False
-              iou_type: "segm" # Mudado para avaliar métricas de segmentação
+              - _target_: sam3.eval.coco_eval_offline.CocoEvaluatorOfflineWithPredFileEvaluators
+                gt_path: ${paths.dataset_path}/valid/_annotations.coco.json
+                tide: False
+                iou_type: "bbox"
+              - _target_: sam3.eval.coco_eval_offline.CocoEvaluatorOfflineWithPredFileEvaluators
+                gt_path: ${paths.dataset_path}/valid/_annotations.coco.json
+                tide: False
+                iou_type: "segm"
 
   optim:
     amp:

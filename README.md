@@ -1,8 +1,6 @@
 # SAM3 Fine-Tuning
 
-This repository provides scripts and configuration files for fine-tuning the **SAM3** model in a custom dataset, focusing on skin lesion segmentation.
-
-The goal is to evaluate how well SAM3 adapts to medical images with limited data and high visual variability.
+This repository provides scripts and configuration files for fine-tuning the **SAM3** model in a custom dataset, focusing on skin lesion segmentation The goal is to evaluate how well SAM3 adapts to medical images with limited data and high visual variability.
 
 ---
 
@@ -22,11 +20,6 @@ The training pipeline includes:
 * Docker with NVIDIA GPU support
 * NVIDIA Container Toolkit installed
 * Hugging Face access token
-* Dataset available at:
-
-```
-./datasets/<dataset_name>
-```
 
 ---
 
@@ -43,22 +36,27 @@ sandbox_sam3/
 
 ---
 
-## Building the Docker Image
+## Environment Setup
 
-Before running the training scripts, you need to build the Docker image that contains the CUDA environment, PyTorch, and all necessary dependencies.
+### Authentication
 
-Run the following command from the root of the repository:
+Export your Hugging Face token to your environment to allow the container to download model weights:
+
+```bash
+export HUGGING_FACE_HUB_TOKEN="your_token_here"
+```
+
+### Build the Docker Image
+
+Build the environment containing CUDA, PyTorch, and all necessary dependencies:
 
 ```bash
 docker build -t sam3_ft .
-
 ```
 
 ---
 
-## Training
-
-Training is executed through Docker to ensure reproducibility and environment isolation. Don't forget to replace YOUR_HF_TOKEN with your actual Hugging Face token.
+## Training Execution
 
 ### Option A: Run training using ALL available GPUs
 
@@ -66,7 +64,7 @@ Training is executed through Docker to ensure reproducibility and environment is
 docker run --gpus all -it --rm \
   --ipc=host \
   --user $(id -u):$(id -g) \
-  -e HUGGING_FACE_HUB_TOKEN=YOUR_HF_TOKEN \
+  -e HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
   -e HF_HOME=/workspace/cache/huggingface \
   -e TORCH_HOME=/workspace/cache/torch \
   -e HOME=/workspace/cache \
@@ -88,7 +86,7 @@ docker run --gpus all -it --rm \
 docker run --gpus '"device=0"' -it --rm \
   --ipc=host \
   --user $(id -u):$(id -g) \
-  -e HUGGING_FACE_HUB_TOKEN=YOUR_HF_TOKEN \
+  -e HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
   -e HF_HOME=/workspace/cache/huggingface \
   -e TORCH_HOME=/workspace/cache/torch \
   -e HOME=/workspace/cache \
@@ -104,14 +102,14 @@ docker run --gpus '"device=0"' -it --rm \
   python sam3/train/train.py -c configs/custom/sam3_ft_isic_10k.yaml --use-cluster 0 2>&1 | tee logs/sam3_ft_isic_10k_gpu0.log
 ```
 
----
+### Option C: Automated Training (Wait for Free GPUs)
 
-## Outputs
-
-All outputs are automatically saved to:
-
+```bash
+chmod +x wait_gpu.sh
 ```
-./logs
+
+```bash
+./wait_gpu.sh
 ```
 
 ---

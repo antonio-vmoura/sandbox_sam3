@@ -81,6 +81,7 @@ roboflow_train:
   val_transforms:
     - _target_: sam3.train.transforms.basic_for_api.ComposeAPI
       transforms:
+        - _target_: sam3.train.transforms.segmentation.DecodeRle
         - _target_: sam3.train.transforms.basic_for_api.RandomResizeAPI
           sizes: ${scratch.resolution}
           max_size:
@@ -239,7 +240,7 @@ trainer:
   max_epochs: 100 # Aumentado levemente para 10k imagens, ajuste conforme a convergência
   accelerator: cuda
   seed_value: 123
-  val_epoch_freq: 5
+  val_epoch_freq: 1
   mode: train
   gradient_accumulation_steps: ${scratch.gradient_accumulation_steps}
 

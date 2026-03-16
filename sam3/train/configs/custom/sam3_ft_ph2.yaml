@@ -30,7 +30,7 @@ defaults:
 paths:
   root_dir: /workspace
   dataset_path: ${paths.root_dir}/data
-  experiment_log_dir: ${paths.root_dir}/logs/sam3_ft_ph2_100
+  experiment_log_dir: ${paths.root_dir}/logs/sam3_ft_ph2_100_2
   bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
 
 # Roboflow dataset configuration
@@ -133,7 +133,7 @@ roboflow_train:
     loss_fn_semantic_seg:
       _target_: sam3.train.loss.loss_fns.SemanticSegCriterion
       presence_head: True
-      presence_loss: False  
+      presence_loss: True # Alteramos para True pois nao estava calculando a confianca corretamente  
       focal: True
       focal_alpha: 0.6
       focal_gamma: 2.0

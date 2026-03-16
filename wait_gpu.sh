@@ -64,7 +64,7 @@ done
 #    -v /etc/passwd:/etc/passwd:ro \
 #    -v /etc/group:/etc/group:ro \
 #    sam3_ft \
-#    python sam3/train/train.py -c configs/custom/sam3_ft_ph2.yaml --use-cluster 0 2>&1 | tee logs/sam3_ft_ph2.log
+#    python sam3/train/train.py -c configs/custom/sam3_ft_ph2.yaml --use-cluster 0 2>&1 | tee logs/sam3_ft_ph2_100_3.log
 
 docker run --gpus all -it --rm \
   --ipc=host \

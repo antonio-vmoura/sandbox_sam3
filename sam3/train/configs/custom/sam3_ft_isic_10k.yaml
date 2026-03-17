@@ -30,7 +30,7 @@ defaults:
 paths:
   root_dir: /workspace
   dataset_path: ${paths.root_dir}/data
-  experiment_log_dir: ${paths.root_dir}/logs/sam3_ft_isic_10k_50
+  experiment_log_dir: ${paths.root_dir}/logs/sam3_ft_isic_10k_50_3
   bpe_path: ${paths.root_dir}/sam3/assets/bpe_simple_vocab_16e6.txt.gz
 
 # Roboflow dataset configuration
@@ -133,7 +133,7 @@ roboflow_train:
     loss_fn_semantic_seg:
       _target_: sam3.train.loss.loss_fns.SemanticSegCriterion
       presence_head: True
-      presence_loss: False  
+      presence_loss: False 
       focal: True
       focal_alpha: 0.6
       focal_gamma: 2.0
@@ -159,7 +159,7 @@ scratch:
     temperature: 10000
 
   # Box processing
-  use_presence_eval: True
+  use_presence_eval: False # Altertamos para False pois a confianca estava com problema
   original_box_postprocessor:
     _target_: sam3.eval.postprocessors.PostProcessImage
     max_dets_per_img: -1 

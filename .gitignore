@@ -161,3 +161,8 @@ Thumbs.db
 *.bpe
 *.vocab
 
+# Heavy datasets
+datasets/isic_2018_all_tasks_supervisely/
+datasets/isic_2018_task1_supervisely/
+datasets/isic_2018_task2_supervisely/
+datasets/isic_2018_task1_coco/

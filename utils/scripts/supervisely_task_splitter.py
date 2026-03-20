@@ -6,6 +6,7 @@ import shutil
 TASK1_CLASSES = ['skin cancer']
 TASK2_CLASSES = ['globule', 'milia like cyst', 'negative network', 'pigment network', 'streaks']
 
+# TODO: Os datasets gerados por algum motivo estao com mais anotacoes do que imagens. Precisamos revisar essa particao e entender o que pode estar errado. 
 
 def setup_directories(out_dir: str, splits: list):
     """

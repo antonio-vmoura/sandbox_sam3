@@ -89,6 +89,9 @@ roboflow_train:
             size: ${scratch.resolution}
           square: true
           consistent_transform: False
+        - _target_: sam3.train.transforms.basic_for_api.PadToSizeAPI
+          size: ${scratch.resolution}
+          consistent_transform: False
         - _target_: sam3.train.transforms.basic_for_api.ToTensorAPI
         - _target_: sam3.train.transforms.basic_for_api.NormalizeAPI
           mean: ${scratch.train_norm_mean}
@@ -159,7 +162,7 @@ scratch:
     temperature: 10000
 
   # Box processing
-  use_presence_eval: False # Altertamos para False pois a confianca estava com problema
+  use_presence_eval: True # Altertamos para False pois a confianca estava com problema
   original_box_postprocessor:
     _target_: sam3.eval.postprocessors.PostProcessImage
     max_dets_per_img: -1 
@@ -175,7 +178,7 @@ scratch:
     use_original_sizes_box: false
     use_original_sizes_mask: true
     convert_mask_to_rle: True
-    detection_threshold: 0.3
+    detection_threshold: 0.05
     use_presence: ${scratch.use_presence_eval}
 
   # Matcher configuration
@@ -226,7 +229,7 @@ scratch:
     _target_: sam3.train.data.collator.collate_fn_api
     _partial_: true
     repeats: ${scratch.hybrid_repeats}
-    dict_key: lesion
+    dict_key: all
     with_seg_masks: ${scratch.enable_segmentation} 
 
   gradient_accumulation_steps: 1
@@ -322,7 +325,7 @@ trainer:
 
   meters:
     val:
-      lesion:
+      all:
         detection:
           _target_: sam3.eval.coco_writer.PredictionDumper
           iou_type: "segm" # Mudado para segm

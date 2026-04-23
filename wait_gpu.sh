@@ -88,7 +88,7 @@ done
 docker run --gpus all -it --rm \
   --ipc=host \
   --user $(id -u):$(id -g) \
-  -e HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
+  -e HUGGING_FACE_HUB_TOKEN= \
   -e HF_HOME=/workspace/cache/huggingface \
   -e TORCH_HOME=/workspace/cache/torch \
   -e HOME=/workspace/cache \

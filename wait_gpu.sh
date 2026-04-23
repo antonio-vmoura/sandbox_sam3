@@ -101,4 +101,4 @@ docker run --gpus all -it --rm \
   -v /etc/passwd:/etc/passwd:ro \
   -v /etc/group:/etc/group:ro \
   sam3_ft \
-  python sam3/train/train.py -c configs/custom/sam3_ft_isic_2018_task_1.yaml --use-cluster 0 2>&1 | tee logs/sam3_ft_isic_2018_task_1.log
+  python sam3/train/train.py -c configs/custom/sam3_ft_isic_2018_task_1_improved.yaml --use-cluster 0 2>&1 | tee logs/sam3_ft_isic_2018_task_1_improved.log

@@ -298,11 +298,20 @@ scratch:
 
   # Batch / collate
   val_batch_size: 1
+  # IMPORTANTE: `dict_key` da val NUNCA pode ser "all".
+  # Em modo eval, o modelo não popula `out["indices"]`
+  # (sam3/model/sam3_image.py:488: só calcula matching se training=True
+  #  ou num_interactive_steps_val>0). Se a key for "all", o trainer chama
+  # a Sam3LossWrapper de verdade, que faz `out["indices"]` e dá
+  # KeyError: 'indices'. Usando uma key qualquer != "all", o trainer cai
+  # no `loss.default` (DummyLoss=0) e a val computa só os meters.
+  # As métricas de COCO continuam funcionando porque `meters.val.isic_val`
+  # bate com essa key (ver bloco `meters.val` abaixo).
   collate_fn_val:
     _target_: sam3.train.data.collator.collate_fn_api
     _partial_: true
     repeats: ${scratch.hybrid_repeats}
-    dict_key: all
+    dict_key: isic_val
     with_seg_masks: ${scratch.enable_segmentation}
 
   # Efetivo = train_batch_size * gpus_per_node * gradient_accumulation_steps
@@ -324,7 +333,11 @@ trainer:
   _target_: sam3.train.trainer.Trainer
   skip_saving_ckpts: false
   empty_gpu_mem_cache_after_eval: True
-  skip_first_val: False   # antes True — rodar val inicial dá baseline antes de treinar
+  # Mantemos `skip_first_val: True` para não gastar 1 val em pesos sem treino
+  # (a val original também era True). val rodará a cada `val_epoch_freq`
+  # épocas. Se quiser baseline pré-treino, mude para False — com o fix
+  # do `dict_key` acima a val agora roda sem KeyError.
+  skip_first_val: True
   max_epochs: 40          # antes 100 — 2594 imgs convergem bem antes
   accelerator: cuda
   seed_value: 123
@@ -401,7 +414,10 @@ trainer:
 
   meters:
     val:
-      all:
+      # Esta key TEM que bater com `collate_fn_val.dict_key` definido em
+      # `scratch.collate_fn_val.dict_key`. NUNCA usar "all" aqui (vide nota
+      # no bloco do collate_fn_val).
+      isic_val:
         detection:
           _target_: sam3.eval.coco_writer.PredictionDumper
           iou_type: "segm"
@@ -422,10 +438,16 @@ trainer:
 
   optim:
     amp:
-      # bfloat16 é estável (não gera NaN como float16 puro). Em GPUs pré-Ampere
-      # (V100 / T4) coloque `enabled: False`. Nunca volte para float16 em SAM3.
+      # ATENÇÃO:
+      # * V100/T4 (sm_70/sm_75) NÃO suportam bfloat16 — o kernel Triton de
+      #   sigmoid_focal_loss gera PTX com .bf16 e PTXAS aborta com
+      #   "Feature '.bf16' requires .target sm_80 or higher".
+      # * Em V100, use float16 + o `presence_gamma: 2.0` que já está na loss
+      #   (issue #289) para evitar o NaN do presence_loss.
+      # * Se mesmo assim aparecer NaN, coloque enabled: False (mais VRAM).
+      # * Em A100/H100/L40/A6000/4090 (sm_80+), troque amp_dtype para bfloat16.
       enabled: True
-      amp_dtype: bfloat16
+      amp_dtype: float16
 
     optimizer:
       _target_: torch.optim.AdamW

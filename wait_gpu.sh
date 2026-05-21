@@ -102,3 +102,42 @@ docker run --gpus all -it --rm \
   -v /etc/group:/etc/group:ro \
   sam3_ft \
   python sam3/train/train.py -c configs/custom/sam3_ft_isic_2018_task_1_improved_3.yaml --use-cluster 0 2>&1 | tee logs/sam3_ft_isic_2018_task_1_improved_3.log
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Treinando todos os modelos na versão 9
+
+docker run --gpus all -it --rm --ipc=host \
+  --user $(id -u):$(id -g) \
+  -e TORCH_HOME=/workspace/cache/torch -e HOME=/workspace/cache \
+  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+  -v $(pwd)/datasets:/workspace/datasets \
+  -v $(pwd)/logs:/workspace/logs \
+  -v $(pwd)/yolo26_seg:/workspace/yolo26_seg \
+  -v $(pwd)/utils:/workspace/utils \
+  -v $(pwd)/cache:/workspace/cache \
+  -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
+  yolo26_ft \
+  python /workspace/yolo26_seg/train_all_v9_models.py \
+  2>&1 | tee logs/v9_all_models.log

@@ -41,7 +41,8 @@ COPY sam3 /workspace/sam3
 # O --extra-index-url garante que o PyTorch venha com suporte a CUDA 12.1
 RUN pip install --upgrade pip && \
     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 && \
-    pip install -e ".[train, notebooks]"
+    pip install -e ".[train, notebooks]" && \
+    pip install optuna pandas pyyaml
 
 # Copia o restante do código
 COPY . /workspace

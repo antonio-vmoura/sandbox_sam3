@@ -15,6 +15,8 @@ PIPELINE_LOG_DIR="${HOST_PROJECT_DIR}/pipeline_runs/${RUN_TS}"
 mkdir -p "${PIPELINE_LOG_DIR}"
 PIPELINE_LOG="${PIPELINE_LOG_DIR}/pipeline_sam3.log"
 
+HF_TOKEN="${HUGGING_FACE_HUB_TOKEN}"
+
 # Define 1 GPU para evitar OutOfMemory com o Ollama
 GPU_DEVICE_IDS="0"
 
@@ -31,7 +33,7 @@ log "=============================================================="
 docker run --gpus '"device='${GPU_DEVICE_IDS}'"' -it --rm \
   --ipc=host \
   --user $(id -u):$(id -g) \
-  -e HUGGING_FACE_HUB_TOKEN="" \
+  -e HUGGING_FACE_HUB_TOKEN="${HF_TOKEN}" \
   -e HF_HOME=/workspace/cache/huggingface \
   -e TORCH_HOME=/workspace/cache/torch \
   -e HOME=/workspace/cache \
@@ -61,7 +63,7 @@ else
     docker run --gpus '"device='${GPU_DEVICE_IDS}'"' -it --rm \
       --ipc=host \
       --user $(id -u):$(id -g) \
-      -e HUGGING_FACE_HUB_TOKEN="" \
+      -e HUGGING_FACE_HUB_TOKEN="${HF_TOKEN}" \
       -e HF_HOME=/workspace/cache/huggingface \
       -e TORCH_HOME=/workspace/cache/torch \
       -e HOME=/workspace/cache \
@@ -116,7 +118,7 @@ else
     docker run --gpus '"device='${GPU_DEVICE_IDS}'"' -it --rm \
       --ipc=host \
       --user $(id -u):$(id -g) \
-      -e HUGGING_FACE_HUB_TOKEN="" \
+      -e HUGGING_FACE_HUB_TOKEN="${HF_TOKEN}" \
       -e HF_HOME=/workspace/cache/huggingface \
       -e TORCH_HOME=/workspace/cache/torch \
       -e HOME=/workspace/cache \
@@ -174,7 +176,7 @@ for FOLD in {0..4}; do
     docker run --gpus '"device='${GPU_DEVICE_IDS}'"' -it --rm \
       --ipc=host \
       --user $(id -u):$(id -g) \
-      -e HUGGING_FACE_HUB_TOKEN="" \
+      -e HUGGING_FACE_HUB_TOKEN="${HF_TOKEN}" \
       -e HF_HOME=/workspace/cache/huggingface \
       -e TORCH_HOME=/workspace/cache/torch \
       -e HOME=/workspace/cache \

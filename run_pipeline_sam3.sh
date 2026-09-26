@@ -21,14 +21,13 @@ GPU_DEVICE_IDS="0"
 log() { printf '[%s] %s\n' "$(date -u +%H:%M:%SZ)" "$*" | tee -a "${PIPELINE_LOG}"; }
 
 log "=============================================================="
-log "SAM 3 ISIC 2018 Task 1 — End-to-End Pipeline (Fases 1 a 3)"
+log "SAM 3 ISIC 2018 Task 1 — Pipeline Completo"
 log "=============================================================="
 
 # =============================================================================
 # FASE 1: Baseline 
 # (Descomente as linhas abaixo quando for rodar o pipeline noturno do zero)
 # =============================================================================
-log "### Fase 1 — [COMENTADA PARA TESTE]"
 docker run --gpus '"device='${GPU_DEVICE_IDS}'"' -it --rm \
   --ipc=host \
   --user $(id -u):$(id -g) \
@@ -135,6 +134,66 @@ else
         --use-cluster 0 2>&1 | tee -a "${PIPELINE_LOG}"
 fi
 
+# =============================================================================
+# FASE 4: Cross-Validation (5-Fold)
+# =============================================================================
+log "### Fase 4 — Cross-Validation 5-Fold..."
+
+FOLDS_DIR="$(pwd)/datasets/isic_2018_task1_coco_folds"
+
+if [ ! -d "$FOLDS_DIR" ]; then
+    log "[ERRO] Diretório de Folds não encontrado. Rode o script generate_folds_coco.py primeiro!"
+    exit 1
+fi
+
+for FOLD in {0..4}; do
+    FOLD_LOG_DIR="${HOST_PROJECT_DIR}/phase4_cv/fold_${FOLD}"
+    
+    if [ -d "${FOLD_LOG_DIR}/tensorboard" ]; then
+        log "[SKIP] Fold ${FOLD} já treinado."
+        continue
+    fi
+
+    log "--- Iniciando Treinamento do Fold ${FOLD} ---"
+    
+    # 1. Cria um YAML temporário para o Fold atual
+    FOLD_YAML_CONTAINER="/workspace/sam3/train/configs/custom/sam3_cv_fold_${FOLD}.yaml"
+    docker run --user $(id -u):$(id -g) --rm \
+      -v $(pwd)/logs:/workspace/logs \
+      -v $(pwd)/sam3:/workspace/sam3 \
+      -v $(pwd)/configs:/workspace/configs \
+      sam3_ft \
+      python sam3/train/prepare_phase3.py \
+        --base_yaml /workspace/sam3/train/configs/custom/sam3_phase1_baseline.yaml \
+        --hpo_yaml /workspace/logs/${PIPELINE_NAME}/hpo/best_hyperparameters.yaml \
+        --out_yaml ${FOLD_YAML_CONTAINER} \
+        --epochs 40 \
+        --log_dir /workspace/logs/${PIPELINE_NAME}/phase4_cv/fold_${FOLD}
+
+    # 2. Roda o treinamento do Fold com o TOKEN do Hugging Face incluído
+    docker run --gpus '"device='${GPU_DEVICE_IDS}'"' -it --rm \
+      --ipc=host \
+      --user $(id -u):$(id -g) \
+      -e HUGGING_FACE_HUB_TOKEN="" \
+      -e HF_HOME=/workspace/cache/huggingface \
+      -e TORCH_HOME=/workspace/cache/torch \
+      -e HOME=/workspace/cache \
+      -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+      -v ${FOLDS_DIR}/fold_${FOLD}:/workspace/data \
+      -v $(pwd)/logs:/workspace/logs \
+      -v $(pwd)/sam3:/workspace/sam3 \
+      -v $(pwd)/configs:/workspace/configs \
+      -v $(pwd)/sam3_cache:/workspace/cache \
+      -v /etc/passwd:/etc/passwd:ro \
+      -v /etc/group:/etc/group:ro \
+      sam3_ft \
+      python sam3/train/train.py \
+        -c configs/custom/sam3_cv_fold_${FOLD}.yaml \
+        --use-cluster 0 2>&1 | tee -a "${PIPELINE_LOG}"
+        
+    log "--- Fold ${FOLD} Concluído ---"
+done
+
 log "=============================================================="
-log "SAM 3 Fases 1 a 3 Orquestradas com Sucesso."
+log " Pipeline SAM 3 Finalizado com Sucesso!"
 log "=============================================================="

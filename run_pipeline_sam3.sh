@@ -15,7 +15,7 @@ PIPELINE_LOG_DIR="${HOST_PROJECT_DIR}/pipeline_runs/${RUN_TS}"
 mkdir -p "${PIPELINE_LOG_DIR}"
 PIPELINE_LOG="${PIPELINE_LOG_DIR}/pipeline_sam3.log"
 
-HF_TOKEN="${HUGGING_FACE_HUB_TOKEN}"
+HF_TOKEN="${HUGGING_FACE_HUB_TOKEN}" #export HUGGING_FACE_HUB_TOKEN="<token>"
 
 # Define 1 GPU para evitar OutOfMemory com o Ollama
 GPU_DEVICE_IDS="0"

@@ -3,45 +3,34 @@ import subprocess
 import yaml
 import optuna
 import argparse
-import pandas as pd
+import re
 from pathlib import Path
-import json
 
-def get_best_metric_from_log(experiment_dir):
+def extract_metric_from_log(log_lines):
     """
-    Lê os resultados gerados pelo coco_evaluator_offline.
-    O SAM3 salva as métricas no diretório de dumps.
+    Usa Regex para caçar o melhor resultado de Average Precision (IoU=0.50:0.95, area=all) 
+    dentro do output padrão do SAM 3.
+    Como ele imprime várias vezes (para BBox e Segm), pegamos o maior valor encontrado.
     """
-    dump_dir = Path(experiment_dir) / "dumps"
-    
-    # Procura os arquivos de métricas (geralmente json ou txt com os resultados do COCO)
-    # Como o SAM3 salva as métricas finais, vamos buscar o maior AP de segmentação (IoU)
     best_iou = 0.0
     
-    # O COCO evaluator salva os resultados padrão em um arquivo. 
-    # Aqui vamos tentar ler os resultados caso ele exporte um JSON, 
-    # ou analisar a saída padrão se não houver um arquivo fácil.
-    # Assumindo que você salva métricas em tensorboard/logs, vamos tentar achar o arquivo summary
-    # Se o trainer salvar um 'val_stats.json' ou 'metrics.json':
-    log_files = list(Path(experiment_dir).rglob("*.json"))
-    for file in log_files:
-        if "coco" in file.name.lower() or "eval" in file.name.lower():
+    # O padrão procura por: "Average Precision (AP) @[ IoU=0.50:0.95 | area= all | maxDets=100 ] = 0.656"
+    # Pegando especificamente o número do final
+    pattern = re.compile(r"Average Precision\s*\(AP\)\s*@\[\s*IoU=0\.50:0\.95\s*\|\s*area=\s*all\s*\|\s*maxDets=100\s*\]\s*=\s*([0-9\.]+)")
+    
+    for line in log_lines:
+        match = pattern.search(line)
+        if match:
             try:
-                with open(file, 'r') as f:
-                    data = json.load(f)
-                    # Busca a métrica AP 50-95 ou AP 50 para máscaras
-                    # O nome exato depende do logger do SAM3, geralmente "segm_AP"
-                    for k, v in data.items():
-                        if 'segm' in k.lower() and 'ap' in k.lower() and isinstance(v, (int, float)):
-                            if v > best_iou:
-                                best_iou = v
+                val = float(match.group(1))
+                if val > best_iou:
+                    best_iou = val
             except:
-                continue
+                pass
                 
     return best_iou if best_iou > 0 else None
 
 def objective(trial, base_config_path, output_dir, epochs, gpus):
-    # 1. Sugerir Hiperparâmetros
     lr_scale = trial.suggest_float("lr_scale", 0.01, 0.2, log=True)
     wd = trial.suggest_float("wd", 0.01, 0.2, log=True)
     focal_gamma = trial.suggest_categorical("focal_gamma", [1.5, 2.0, 2.5])
@@ -49,7 +38,6 @@ def objective(trial, base_config_path, output_dir, epochs, gpus):
     trial_name = f"trial_{trial.number}"
     trial_dir = Path(output_dir) / trial_name
     
-    # 2. Carregar o YAML base e aplicar as modificações
     with open(base_config_path, 'r') as f:
         config = yaml.safe_load(f)
     
@@ -71,19 +59,16 @@ def objective(trial, base_config_path, output_dir, epochs, gpus):
     config['launcher']['experiment_log_dir'] = str(trial_dir)
     config['launcher']['gpus_per_node'] = gpus
     
-    # 3. Salvar o YAML temporário na pasta "sam3/train/configs/custom/hpo_trials"
     hpo_configs_dir = Path("/workspace/sam3/train/configs/custom/hpo_trials")
     hpo_configs_dir.mkdir(parents=True, exist_ok=True)
     
     trial_yaml_name = f"{trial_name}.yaml"
     trial_yaml_path_absolute = hpo_configs_dir / trial_yaml_name
     
-    # Gravando com a diretiva obrigatória do Hydra
     with open(trial_yaml_path_absolute, 'w') as f:
         f.write("# @package _global_\n")
         yaml.dump(config, f)
         
-    # 4. Executar o Treinamento do SAM 3 com o caminho relativo
     cmd = [
         "python", "sam3/train/train.py",
         "-c", f"configs/custom/hpo_trials/{trial_yaml_name}",
@@ -106,12 +91,14 @@ def objective(trial, base_config_path, output_dir, epochs, gpus):
         print("".join(full_log[-20:]))
         raise optuna.TrialPruned("O treinamento falhou ou gerou erro (ex: OOM).")
         
-    # 5. Ler o resultado
-    best_iou = get_best_metric_from_log(trial_dir)
+    # Extrai o melhor resultado direto do output guardado na memória
+    best_iou = extract_metric_from_log(full_log)
     
     if best_iou is None:
+        print("⚠️ Aviso: O treinamento concluiu mas a métrica AP não foi encontrada no log.")
         raise optuna.TrialPruned("Métrica de validação não encontrada no log.")
         
+    print(f"✅ Trial {trial.number} concluído. Melhor AP: {best_iou}")
     return best_iou
 
 if __name__ == "__main__":
@@ -128,7 +115,6 @@ if __name__ == "__main__":
     
     os.makedirs(args.project_dir, exist_ok=True)
     
-    # Maximizar o Jaccard Index (IoU) / Mask AP
     study = optuna.create_study(
         study_name=study_name, 
         direction="maximize", 
@@ -143,15 +129,17 @@ if __name__ == "__main__":
     
     print("\n=======================================================")
     print("HPO Concluído!")
-    print("Melhor Trial:")
-    trial = study.best_trial
-    print(f"  Valor (IoU / AP): {trial.value}")
-    print("  Hiperparâmetros:")
-    for key, value in trial.params.items():
-        print(f"    {key}: {value}")
-        
-    # Salva os melhores hiperparâmetros num arquivo final
-    best_hp_path = Path(args.project_dir) / "best_hyperparameters.yaml"
-    with open(best_hp_path, 'w') as f:
-        yaml.dump(trial.params, f)
-    print(f"Salvo em {best_hp_path}")
+    
+    try:
+        trial = study.best_trial
+        print(f"  Valor (IoU / AP): {trial.value}")
+        print("  Hiperparâmetros:")
+        for key, value in trial.params.items():
+            print(f"    {key}: {value}")
+            
+        best_hp_path = Path(args.project_dir) / "best_hyperparameters.yaml"
+        with open(best_hp_path, 'w') as f:
+            yaml.dump(trial.params, f)
+        print(f"Salvo em {best_hp_path}")
+    except ValueError as e:
+        print("Nenhum Trial foi concluído com sucesso. O arquivo de hiperparâmetros não será gerado.")

@@ -18,7 +18,7 @@ Search space (strict "apples-to-apples")
     which all lie inside the bounds.
 
 Budget (SAM 3-specific, disclosed): :data:`common.HPO_ITERATIONS` = 10 trials
-x :data:`common.HPO_EPOCHS` = 10 epochs (patience 5) on the full train split —
+x :data:`common.HPO_EPOCHS` = 10 epochs (patience 10 = no early stopping) on the full train split —
 YOLO26 / U-Net use 30 x 30. With 10 trials, Optuna's default of 10 random
 start-up trials would leave no trial to TPE; :data:`TPE_STARTUP_TRIALS` = 5
 (the defaults + 4 random proposals, then 5 TPE proposals).

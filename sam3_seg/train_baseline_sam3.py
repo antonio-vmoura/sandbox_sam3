@@ -12,7 +12,7 @@ Data: the Phase 0 COCO dataset (same images and splits as YOLO26 / U-Net):
 ``train`` for fitting, ``val`` for model selection / early stopping (per-image
 mean JSI). The ``test`` split is never touched.
 
-Budget: 30 epochs, patience 10 (SAM 3-specific, see :data:`common.TRAIN_EPOCHS`).
+Budget: 30 epochs, no early stopping (patience 30; SAM 3-specific, see :data:`common.TRAIN_EPOCHS`).
 
 The run is fault-tolerant and resumable (see :mod:`training`); a
 completed run is skipped unless ``--force`` is passed.

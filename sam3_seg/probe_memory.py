@@ -15,7 +15,7 @@ CUDA context never leak between them:
 For each configuration it reports whether the step fits in memory, the peak
 VRAM allocated / reserved by PyTorch, the device-level total (incl. the CUDA
 context, via NVML), the median / P95 seconds per optimiser step after warm-up,
-and the projected time per training epoch (2,547 images).
+and the projected time per training epoch (2,594 images).
 
 Usage (inside the ``sam3_ft`` container, one GPU visible):
     python sam3_seg/probe_memory.py --data /workspace/datasets/isic_2018_task1_sam3
@@ -38,8 +38,8 @@ CONFIGS: dict[str, dict] = {
     "P1D": {"batch": 2, "chunks": 1, "act_ckpt": True, "deterministic": True, "desc": "P1 + strict deterministic algorithms (bit-exact; not used by the study: +33 % time)"},
     "P2": {"batch": 2, "chunks": 2, "act_ckpt": True, "desc": "FP32, 2 chunks of 1 (grad. accumulation 2), act. ckpt ON"},
 }
-BASE_YAML = "sam3/train/configs/custom/sam3_phase1_baseline.yaml"
-N_TRAIN_FULL = 2547
+BASE_YAML = "sam3_seg/configs/sam3_base_recipe.yaml"   # frozen official recipe (= former custom/sam3_phase1_baseline.yaml)
+N_TRAIN_FULL = 2594
 
 
 def disable_act_ckpt(model) -> int:

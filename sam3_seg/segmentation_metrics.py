@@ -4,8 +4,11 @@ Ultralytics reports detection-style metrics (mAP, P, R) per *instance*. Lesion
 segmentation papers (ISIC 2018 Task 1) report *pixel-level* overlap between
 the ground-truth and the predicted lesion masks, which is computed here:
 
-* **Ground truth** — every polygon of the YOLO label file, rasterised at the
-  original image resolution (:func:`rasterize_yolo_label`) and merged (union).
+* **Ground truth** (:func:`ground_truth_mask`) — the dataset's mask image
+  (``masks/<stem>.png``, the official ISIC mask at the working resolution)
+  when the dataset has one; otherwise every polygon of the YOLO label file,
+  rasterised at the image resolution (:func:`rasterize_yolo_label`) and
+  merged (union).
 * **Prediction** — the union of every predicted instance mask with
   confidence ``>= conf``, produced at the original resolution
   (``retina_masks=True``) (:func:`predicted_union_mask`).
@@ -18,12 +21,29 @@ the ground-truth and the predicted lesion masks, which is computed here:
   - sensitivity ``TP / (TP + FN)``, specificity ``TN / (TN + FP)``,
     pixel accuracy ``(TP + TN) / N``.
 
+* **Boundary scores** (contour adherence, as recommended by *Metrics
+  Reloaded*, Maier-Hein et al., Nat. Methods 2024; overlap scores are
+  insensitive to boundary errors on large lesions):
+
+  - ``BIoU`` — Boundary IoU (Cheng et al., CVPR 2021): the IoU of the two
+    *boundary bands*, i.e. the pixels of each mask within ``d`` pixels of its
+    own contour, ``d`` = :data:`BOUNDARY_DILATION_RATIO` × image diagonal
+    (2 %, the authors' setting; ≈ 26 px for a 1024 × 768 image).
+  - ``NSD`` — Normalised Surface Distance / surface Dice (Nikolov et al.,
+    2021): the fraction of contour pixels of both masks that lie within a
+    tolerance ``tau`` of the other mask's contour, ``tau`` =
+    :data:`NSD_TOLERANCE_RATIO` × image diagonal (1 %; ≈ 13 px for a 1024 × 768 image).
+
+  Contours are the 1-pixel inner boundaries of the masks; the image border
+  counts as background (zero padding), as in the reference BIoU code.
+
 Empty masks are handled explicitly, never by dividing by zero:
 
 * GT empty **and** prediction empty → DSC = JSI = 1 (perfect agreement); the
   row is flagged ``both_empty``. Sensitivity is undefined (NaN).
 * Exactly one of them empty → DSC = JSI = 0 (flagged ``empty_pred`` or
   ``empty_gt``). A missed lesion therefore counts as a full failure in the mean.
+  The boundary scores follow the same rule (1 if both empty, 0 if one is).
 
 Dataset-level aggregates (:func:`aggregate_scores`) report the per-image mean
 (macro, the primary figure), sample std (ddof=1), median, IQR, a seeded
@@ -43,9 +63,20 @@ import numpy as np
 #: ISIC 2018 Task 1 threshold for the thresholded Jaccard index.
 ISIC_JSI_THRESHOLD: float = 0.65
 
+#: ISIC 2018 Task 2 lesion attributes; the YOLO class id of an attribute is its index.
+ISIC2018_ATTRIBUTES: tuple[str, ...] = (
+    "pigment_network", "negative_network", "streaks", "milia_like_cyst", "globules",
+)
+
+#: Boundary-band width of the Boundary IoU, as a fraction of the image diagonal.
+BOUNDARY_DILATION_RATIO: float = 0.02
+
+#: Tolerance of the Normalised Surface Distance, as a fraction of the image diagonal.
+NSD_TOLERANCE_RATIO: float = 0.01
+
 #: Per-image score columns aggregated by :func:`aggregate_scores`.
 SCORE_KEYS: tuple[str, ...] = (
-    "dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy",
+    "dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy", "biou", "nsd",
 )
 
 
@@ -57,7 +88,51 @@ def label_path_for(image_path: Path) -> Path:
     return Path(str(image_path).replace("/images/", "/labels/")).with_suffix(".txt")
 
 
-def rasterize_yolo_label(label_path: Path, height: int, width: int) -> np.ndarray:
+def mask_path_for(image_path: Path) -> Path:
+    """Return the ground-truth mask path of an image (``/images/`` → ``/masks/``, ``.png``)."""
+    return Path(str(image_path).replace("/images/", "/masks/")).with_suffix(".png")
+
+
+def ground_truth_mask(image_path: Path, height: int, width: int) -> np.ndarray:
+    """Ground-truth lesion mask of a dataset image at ``height × width``.
+
+    The official mask (``masks/<stem>.png``, written by Phase 0) is used when it exists — it is exact, whereas
+    the YOLO label is a polygon approximation for training. Datasets without mask images fall back to the
+    rasterised YOLO label.
+
+    Raises:
+        ValueError: If the mask image does not have the requested size.
+    """
+    mpath = mask_path_for(image_path)
+    if mpath.exists():
+        mask = cv2.imread(str(mpath), cv2.IMREAD_GRAYSCALE)
+        if mask is None or mask.shape != (height, width):
+            raise ValueError(f"{mpath}: mask {None if mask is None else mask.shape} != image {(height, width)}")
+        return mask > 127
+    return rasterize_yolo_label(label_path_for(image_path), height, width)
+
+
+def class_mask_path_for(image_path: Path, class_name: str) -> Path:
+    """Ground-truth mask of one class (Task 2 attribute): ``/images/`` → ``/masks/<class_name>/``, ``.png``."""
+    return Path(str(image_path).replace("/images/", f"/masks/{class_name}/")).with_suffix(".png")
+
+
+def ground_truth_class_mask(image_path: Path, class_name: str, class_id: int, height: int, width: int) -> np.ndarray:
+    """Ground-truth mask of one class of a multi-label dataset (ISIC 2018 Task 2 attribute).
+
+    The official attribute mask (``masks/<class_name>/<stem>.png``, written by Phase 0) when it exists,
+    otherwise the polygons of class ``class_id`` of the YOLO label, rasterised. Classes may overlap.
+    """
+    mpath = class_mask_path_for(image_path, class_name)
+    if mpath.exists():
+        mask = cv2.imread(str(mpath), cv2.IMREAD_GRAYSCALE)
+        if mask is None or mask.shape != (height, width):
+            raise ValueError(f"{mpath}: mask {None if mask is None else mask.shape} != image {(height, width)}")
+        return mask > 127
+    return rasterize_yolo_label(label_path_for(image_path), height, width, class_id=class_id)
+
+
+def rasterize_yolo_label(label_path: Path, height: int, width: int, class_id: int | None = None) -> np.ndarray:
     """Rasterise a YOLO label file into a binary union mask at full resolution.
 
     Segmentation lines (``cls x1 y1 x2 y2 ...``, normalised) are filled as
@@ -68,6 +143,7 @@ def rasterize_yolo_label(label_path: Path, height: int, width: int) -> np.ndarra
         label_path: Path to the ``.txt`` label.
         height: Image height in pixels.
         width: Image width in pixels.
+        class_id: Rasterise only the lines of this class (multi-label datasets); ``None`` = all lines.
 
     Returns:
         ``bool`` array of shape ``(height, width)``.
@@ -78,7 +154,7 @@ def rasterize_yolo_label(label_path: Path, height: int, width: int) -> np.ndarra
     scale = np.array([width, height], dtype=np.float64)
     for line in Path(label_path).read_text().splitlines():
         vals = line.split()
-        if len(vals) < 5:
+        if len(vals) < 5 or (class_id is not None and int(float(vals[0])) != class_id):
             continue
         coords = np.array(vals[1:], dtype=np.float64)
         if len(coords) == 4:  # bounding box
@@ -119,6 +195,37 @@ def _ratio(num: float, den: float) -> float:
     return num / den if den > 0 else math.nan
 
 
+def _distance_to_zero(mask: np.ndarray, border: int = 0) -> np.ndarray:
+    """Euclidean distance of every pixel to the nearest zero pixel (outside the image = ``border``)."""
+    padded = np.pad(mask.astype(np.uint8), 1, constant_values=border)
+    return cv2.distanceTransform(padded, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)[1:-1, 1:-1]
+
+
+def _contour(mask: np.ndarray) -> np.ndarray:
+    """1-pixel inner boundary of a binary mask (image border counts as background)."""
+    eroded = cv2.erode(np.pad(mask.astype(np.uint8), 1), np.ones((3, 3), np.uint8))[1:-1, 1:-1]
+    return mask & ~eroded.astype(bool)
+
+
+def boundary_scores(gt: np.ndarray, pred: np.ndarray) -> dict[str, float]:
+    """Boundary IoU and Normalised Surface Distance of one image (see module docstring)."""
+    if not gt.any() or not pred.any():
+        both = not gt.any() and not pred.any()
+        return {"biou": float(both), "nsd": float(both)}
+    diag = math.hypot(*gt.shape)
+    d = max(1.0, BOUNDARY_DILATION_RATIO * diag)
+    tau = max(1.0, NSD_TOLERANCE_RATIO * diag)
+    band_gt = gt & (_distance_to_zero(gt) <= d)
+    band_pred = pred & (_distance_to_zero(pred) <= d)
+    biou = np.count_nonzero(band_gt & band_pred) / np.count_nonzero(band_gt | band_pred)
+    c_gt, c_pred = _contour(gt), _contour(pred)
+    to_gt = _distance_to_zero(~c_gt, border=1)      # distance to the nearest ground-truth contour pixel
+    to_pred = _distance_to_zero(~c_pred, border=1)
+    hits = np.count_nonzero(to_pred[c_gt] <= tau) + np.count_nonzero(to_gt[c_pred] <= tau)
+    nsd = hits / (np.count_nonzero(c_gt) + np.count_nonzero(c_pred))
+    return {"biou": float(biou), "nsd": float(nsd)}
+
+
 def pixel_scores(gt: np.ndarray, pred: np.ndarray) -> dict[str, Any]:
     """Compute the confusion counts and pixel scores of one image.
 
@@ -154,6 +261,7 @@ def pixel_scores(gt: np.ndarray, pred: np.ndarray) -> dict[str, Any]:
         "sensitivity": _ratio(tp, tp + fn),
         "specificity": _ratio(tn, tn + fp),
         "accuracy": (tp + tn) / gt.size,
+        **boundary_scores(gt, pred),
         "empty_gt": empty_gt,
         "empty_pred": empty_pred,
         "both_empty": empty_gt and empty_pred,
@@ -251,7 +359,7 @@ def evaluate_images(
         infer_ms = (time.perf_counter() - t0) * 1000
         h, w = result.orig_shape
         pred = predicted_union_mask(result, h, w)
-        gt = rasterize_yolo_label(label_path_for(img_path), h, w)
+        gt = ground_truth_mask(img_path, h, w)
         if mask_dir is not None:
             cv2.imwrite(str(Path(mask_dir) / f"{Path(img_path).stem}.png"),
                         pred.astype(np.uint8) * 255)

@@ -59,7 +59,8 @@ from segmentation_metrics import SCORE_KEYS, aggregate_scores, pixel_scores
 RESULT_COLUMNS: tuple[str, ...] = (
     "epoch", "time_s", "train_loss", "val_loss",
     "val_dsc", "val_jsi", "val_jsi_thr", "val_sensitivity", "val_specificity", "val_accuracy",
-    "val_pooled_dsc", "val_pooled_jsi", "val_n_empty_pred", "val_coco_ap_segm", "val_coco_ap_bbox",
+    "val_biou", "val_nsd", "val_pooled_dsc", "val_pooled_jsi", "val_n_empty_pred",
+    "val_coco_ap_segm", "val_coco_ap_bbox",
     "improved",
 )
 

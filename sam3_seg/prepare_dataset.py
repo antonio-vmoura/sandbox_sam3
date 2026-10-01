@@ -1,5 +1,13 @@
 """Phase 0 — Build the SAM 3 COCO dataset from the YOLO26 dataset (single source of truth).
 
+``--task 1`` (default): ISIC 2018 Task 1 — one category ``"skin lesion"`` (the text prompt), one instance per
+image (the official lesion mask). ``--task 2``: ISIC 2018 Task 2 — **five categories, one per lesion attribute,
+whose names are the text prompts** (:data:`TASK2_PROMPTS`: "pigment network", "negative network", "streaks",
+"milia-like cyst", "globules"); every attribute present in an image becomes one instance of its category (the
+official attribute mask, RLE), so overlapping attributes coexist and an image may have no instance. Input = the
+Task 2 YOLO26 dataset (``prepare_dataset.py --task 2`` of YOLO26), masks read with
+:func:`segmentation_metrics.ground_truth_class_mask`.
+
 SAM 3 is trained and evaluated on **exactly the same images, splits and
 annotations** as YOLO26-seg and the U-Net. This script reads the YOLO-format
 dataset (``data.yaml``: ``train`` / ``val`` / ``test`` + polygon labels) and
@@ -14,14 +22,18 @@ writes a COCO dataset in the format the official SAM 3 loaders consume
 
 Per image (deterministic):
 
-* Each YOLO polygon (one line of the label file) becomes one COCO instance:
-  it is rasterised at the image's own resolution with **the convention of**
-  :func:`segmentation_metrics.rasterize_yolo_label` (the function YOLO26's and
-  the U-Net's evaluation use; their union is verified to equal it), encoded as
-  compressed RLE with ``pycocotools``; ``bbox`` and ``area`` are derived from
-  the mask.
+* The lesion becomes **one** COCO instance whose mask is the official ISIC mask
+  of the image (``masks/<id>.png`` of YOLO26's Phase 0, read with
+  :func:`segmentation_metrics.ground_truth_mask` — the ground truth every
+  pipeline is scored against), encoded as compressed RLE with ``pycocotools``
+  (RLE represents holes and fragments exactly); ``bbox`` and ``area`` are
+  derived from the mask. Datasets without mask images fall back to the union of
+  the rasterised YOLO polygons.
 * The image file is linked (or copied) unchanged — SAM 3 sees the same pixels
-  as YOLO26 (the 640 × 640 export) and resizes them internally to 1008.
+  as YOLO26 and the U-Net (the working resolution of Phase 0) and resizes them
+  internally to 1008.
+* The split sizes must be **exactly** the official ISIC 2018 Task 1 ones
+  (2,594 / 100 / 1,000; :data:`EXPECTED_COUNTS`) — asserted on input and output.
 * The single category is named ``"skin lesion"`` (:data:`common.PROMPT`): SAM 3
   uses the category name as its text prompt.
 
@@ -38,7 +50,7 @@ Runs inside the ``sam3_ft`` image (needs ``pycocotools``).
 
 Usage:
     python sam3_seg/prepare_dataset.py \\
-        --yolo-data /workspace/datasets/isic_2018_task1_yolo26/data.yaml \\
+        --yolo-data /workspace/yolo26_dataset/data.yaml \\
         --out /workspace/datasets/isic_2018_task1_sam3
 """
 
@@ -70,10 +82,17 @@ from common import (
     utc_now_iso,
     utc_stamp,
 )
-from segmentation_metrics import label_path_for
+from segmentation_metrics import (
+    ISIC2018_ATTRIBUTES,
+    class_mask_path_for,
+    ground_truth_class_mask,
+    ground_truth_mask,
+    label_path_for,
+    mask_path_for,
+)
 
 #: Version of the preprocessing method (part of the dataset fingerprint).
-PREP_VERSION: int = 1
+PREP_VERSION: int = 2   # 2: one instance per image from the official mask
 
 #: ``data.yaml`` split key → output split name.
 SPLITS: dict[str, str] = {"train": "train", "val": "val", "test": "test"}
@@ -84,8 +103,33 @@ IMAGE_EXTENSIONS: tuple[str, ...] = (".jpg", ".jpeg", ".png", ".bmp", ".tif", ".
 #: Number of CV folds (identical to YOLO26 / U-Net).
 K_FOLDS: int = 5
 
+#: Official ISIC 2018 Task 1 split sizes (3,694 images) — enforced with assertions.
+EXPECTED_COUNTS: dict[str, int] = {"train": 2594, "val": 100, "test": 1000}
+
 #: The single COCO category (its name is SAM 3's text prompt).
 CATEGORY: dict[str, Any] = {"id": 0, "name": PROMPT, "supercategory": "lesion"}
+
+#: ISIC 2018 Task 2 attribute -> SAM 3 text prompt (category name; category id = attribute index).
+TASK2_PROMPTS: dict[str, str] = {
+    "pigment_network": "pigment network",
+    "negative_network": "negative network",
+    "streaks": "streaks",
+    "milia_like_cyst": "milia-like cyst",
+    "globules": "globules",
+}
+assert tuple(TASK2_PROMPTS) == ISIC2018_ATTRIBUTES
+TASK2_CATEGORIES: list[dict[str, Any]] = [
+    {"id": k, "name": TASK2_PROMPTS[a], "supercategory": "lesion attribute", "attribute": a}
+    for k, a in enumerate(ISIC2018_ATTRIBUTES)
+]
+
+#: Task 2 defaults: the Task 2 YOLO26 dataset (mount it at /workspace/yolo26_dataset_task2) and the output.
+TASK2_YOLO_DATA_YAML: str = "/workspace/yolo26_dataset_task2/data.yaml"
+TASK2_DATA_DIR: str = "/workspace/datasets/isic_2018_task2_sam3"
+
+#: Task of the current run (set by :func:`main`); Task 1 by default.
+TASK: int = 1
+CATEGORIES: list[dict[str, Any]] = [CATEGORY]
 
 
 # ----------------------------------------------------------------------------
@@ -120,13 +164,16 @@ def resolve_split(data_yaml: Path, key: str) -> tuple[Path, list[Path]]:
 
 
 def source_fingerprint(images: list[Path], root: Path) -> str:
-    """SHA-256 over (relative path, image SHA-256, label SHA-256) of a split."""
+    """SHA-256 over (relative path, image, label and mask SHA-256) of a split."""
     h = hashlib.sha256()
     for img in images:
         lab = label_path_for(img)
+        msks = [mask_path_for(img)] if TASK == 1 else [class_mask_path_for(img, a) for a in ISIC2018_ATTRIBUTES]
         h.update(str(img.relative_to(root)).encode())
         h.update(sha256_file(img).encode())
         h.update((sha256_file(lab) if lab.exists() else "no-label").encode())
+        for msk in msks:
+            h.update((sha256_file(msk) if msk.exists() else "no-mask").encode())
     return h.hexdigest()
 
 
@@ -151,33 +198,6 @@ def build_kfold_splits(ids: list[str], k: int, seed: int) -> list[tuple[list[str
 # ----------------------------------------------------------------------------
 # Annotations
 # ----------------------------------------------------------------------------
-def instance_masks(label_path: Path, height: int, width: int) -> list[np.ndarray]:
-    """One binary mask per YOLO label line, rasterised exactly like
-    :func:`segmentation_metrics.rasterize_yolo_label` (whose result is their union)."""
-    masks: list[np.ndarray] = []
-    if not label_path.exists():
-        return masks
-    scale = np.array([width, height], dtype=np.float64)
-    for line in label_path.read_text().splitlines():
-        vals = line.split()
-        if len(vals) < 5:
-            continue
-        coords = np.array(vals[1:], dtype=np.float64)
-        m = np.zeros((height, width), dtype=np.uint8)
-        if len(coords) == 4:  # bounding box
-            xc, yc, bw, bh = coords * np.array([width, height, width, height])
-            x0, y0 = int(round(xc - bw / 2)), int(round(yc - bh / 2))
-            x1, y1 = int(round(xc + bw / 2)), int(round(yc + bh / 2))
-            cv2.rectangle(m, (x0, y0), (x1, y1), 1, thickness=-1)
-        elif len(coords) >= 6 and len(coords) % 2 == 0:
-            pts = np.round(coords.reshape(-1, 2) * scale).astype(np.int32)
-            cv2.fillPoly(m, [pts], 1)
-        else:
-            continue
-        masks.append(m)
-    return masks
-
-
 def encode(mask: np.ndarray) -> tuple[dict[str, Any], list[float], int]:
     """Compressed RLE (str counts, as the Roboflow export), COCO bbox [x, y, w, h], area."""
     rle = mask_utils.encode(np.asfortranarray(mask))
@@ -193,12 +213,19 @@ def describe_image(img: Path, root: Path) -> dict[str, Any]:
     if bgr is None:
         raise OSError(f"cannot read {img}")
     h, w = bgr.shape[:2]
-    anns = []
-    for m in instance_masks(label_path_for(img), h, w):
-        if not m.any():
-            raise RuntimeError(f"{img}: degenerate (empty) instance polygon")
-        rle, bbox, area = encode(m)
-        anns.append({"segmentation": rle, "bbox": bbox, "area": area})
+    if TASK == 2:   # one instance per attribute present (multi-label: attributes may overlap)
+        anns = []
+        for cat in TASK2_CATEGORIES:
+            mask = ground_truth_class_mask(img, cat["attribute"], cat["id"], h, w)
+            if mask.any():
+                rle, bbox, area = encode(mask.astype(np.uint8))
+                anns.append({"segmentation": rle, "bbox": bbox, "area": area, "category_id": cat["id"]})
+    else:
+        mask = ground_truth_mask(img, h, w)
+        if not mask.any():
+            raise RuntimeError(f"{img}: empty ground-truth mask")
+        rle, bbox, area = encode(mask.astype(np.uint8))
+        anns = [{"segmentation": rle, "bbox": bbox, "area": area}]
     return {"id": isic_id(img), "file_name": img.name, "width": w, "height": h,
             "image": str(img.relative_to(root)), "label": str(label_path_for(img).relative_to(root)),
             "anns": anns}
@@ -211,12 +238,13 @@ def coco_json(records: list[dict[str, Any]], description: str) -> dict[str, Any]
         images.append({"id": img_id, "width": r["width"], "height": r["height"], "file_name": r["file_name"],
                        "isic_id": r["id"], "license": 1, "date_captured": ""})
         for a in r["anns"]:
-            annotations.append({"id": len(annotations), "image_id": img_id, "category_id": CATEGORY["id"],
+            annotations.append({"id": len(annotations), "image_id": img_id,
+                                "category_id": a.get("category_id", CATEGORY["id"]),
                                 "bbox": a["bbox"], "area": a["area"], "segmentation": a["segmentation"],
                                 "iscrowd": 0})
     return {"info": {"description": description, "version": str(PREP_VERSION), "date_created": utc_now_iso()},
             "licenses": [{"id": 1, "name": "see ISIC 2018 / dataset README", "url": ""}],
-            "categories": [CATEGORY], "images": images, "annotations": annotations}
+            "categories": CATEGORIES, "images": images, "annotations": annotations}
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> str:
@@ -242,8 +270,13 @@ def link_or_copy(src: Path, dst: Path) -> str:
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     p = argparse.ArgumentParser(description="Phase 0 — SAM 3 COCO dataset from the YOLO26 dataset.")
-    p.add_argument("--yolo-data", default=DEFAULT_YOLO_DATA_YAML, help="YOLO data.yaml (train/val/test).")
-    p.add_argument("--out", default=DEFAULT_DATA_DIR, help=f"Output directory (default: {DEFAULT_DATA_DIR}).")
+    p.add_argument("--task", type=int, choices=(1, 2), default=1,
+                   help="ISIC 2018 task: 1 = lesion segmentation, prompt 'skin lesion' (default); "
+                        "2 = five lesion attributes, one prompt each.")
+    p.add_argument("--yolo-data", default=None,
+                   help=f"YOLO data.yaml (default: Task 1 {DEFAULT_YOLO_DATA_YAML}; Task 2 {TASK2_YOLO_DATA_YAML}).")
+    p.add_argument("--out", default=None,
+                   help=f"Output directory (default: Task 1 {DEFAULT_DATA_DIR}; Task 2 {TASK2_DATA_DIR}).")
     p.add_argument("--seed", type=int, default=SEED, help="K-Fold seed (default: 0, as YOLO26).")
     p.add_argument("--force", action="store_true", help="Rebuild even if up to date.")
     return p.parse_args()
@@ -255,14 +288,29 @@ def main() -> int:
     Returns:
         ``0`` on success / up to date, ``2`` on invalid input.
     """
+    global TASK, CATEGORIES
     args = parse_args()
+    TASK = args.task
+    CATEGORIES = [CATEGORY] if TASK == 1 else TASK2_CATEGORIES
+    args.yolo_data = args.yolo_data or (DEFAULT_YOLO_DATA_YAML if TASK == 1 else TASK2_YOLO_DATA_YAML)
+    args.out = args.out or (DEFAULT_DATA_DIR if TASK == 1 else TASK2_DATA_DIR)
     data_yaml = Path(args.yolo_data).resolve()
     out = Path(args.out)
+    if TASK == 2:
+        names = (yaml.safe_load(data_yaml.read_text()) or {}).get("names")
+        names = list(names.values()) if isinstance(names, dict) else names
+        assert names == list(ISIC2018_ATTRIBUTES), (
+            f"{data_yaml}: classes {names} are not the five ISIC 2018 Task 2 attributes — "
+            f"build it with YOLO26's prepare_dataset.py --task 2")
     try:
         resolved = {name: resolve_split(data_yaml, key) for key, name in SPLITS.items()}
     except (OSError, ValueError) as e:
         print(f"[error] {e}", file=sys.stderr)
         return 2
+    for name, (_, images) in resolved.items():
+        assert len(images) == EXPECTED_COUNTS[name], (
+            f"{name}: {len(images)} images in {data_yaml}, expected exactly {EXPECTED_COUNTS[name]} "
+            f"(official ISIC 2018 Task 1) — rebuild the YOLO26 dataset from the raw release")
     owner: dict[str, str] = {}
     for name, (_, images) in resolved.items():
         for img in images:
@@ -275,7 +323,10 @@ def main() -> int:
     for name, (_, images) in resolved.items():
         print(f"  {name:<5}: {len(images)} images")
     params = {"prep_version": PREP_VERSION, "category": CATEGORY, "k_folds": K_FOLDS, "seed": args.seed,
-              "mask_encoding": "compressed RLE (pycocotools)", "rasterisation": "segmentation_metrics convention"}
+              "mask_encoding": "compressed RLE (pycocotools)", "ground_truth": "segmentation_metrics.ground_truth_mask"}
+    if TASK == 2:   # Task 1 keeps its historical key, so the existing dataset stays valid
+        params.update(task=2, category=None, categories=TASK2_CATEGORIES,
+                      ground_truth="segmentation_metrics.ground_truth_class_mask")
     print("  fingerprinting source files ...")
     sources = {name: source_fingerprint(images, root) for name, (root, images) in resolved.items()}
     meta = read_json(out / "meta.json")
@@ -307,7 +358,7 @@ def main() -> int:
     files: dict[str, str] = {}
     for name, recs in records.items():
         files[f"annotations/{name}.json"] = write_json(tmp / "annotations" / f"{name}.json",
-                                                       coco_json(recs, f"ISIC 2018 Task 1 — {name} (from YOLO26)"))
+                                                       coco_json(recs, f"ISIC 2018 Task {TASK} — {name} (from YOLO26)"))
     pool = records["train"] + records["val"]
     by_id = {r["id"]: r for r in pool}
     folds = build_kfold_splits([r["id"] for r in pool], K_FOLDS, args.seed)
@@ -316,10 +367,19 @@ def main() -> int:
         for part, ids in (("train", tr), ("val", va)):
             files[f"folds/fold_{k}/{part}.json"] = write_json(
                 tmp / "folds" / f"fold_{k}" / f"{part}.json",
-                coco_json([by_id[i] for i in ids], f"ISIC 2018 Task 1 — CV fold {k} {part} (YOLO26 folds)"))
+                coco_json([by_id[i] for i in ids], f"ISIC 2018 Task {TASK} — CV fold {k} {part} (YOLO26 folds)"))
         fold_meta.append({"fold": k, "n_train": len(tr), "n_val": len(va),
                           "val_sha256": hashlib.sha256("\n".join(va).encode()).hexdigest()})
 
+    for name, r in records.items():
+        assert len(r) == EXPECTED_COUNTS[name], f"{name}: wrote {len(r)} images, expected {EXPECTED_COUNTS[name]}"
+        if TASK == 1:
+            assert all(len(x["anns"]) == 1 for x in r), f"{name}: every image must have exactly one lesion instance"
+        else:
+            for x in r:
+                cats = [a["category_id"] for a in x["anns"]]
+                assert len(cats) == len(set(cats)) <= len(TASK2_CATEGORIES), f"{x['id']}: invalid attribute instances {cats}"
+    assert len(list((tmp / "images").iterdir())) == sum(EXPECTED_COUNTS.values()) == 3694
     atomic_write_json(tmp / "meta.json", {
         "created_at": utc_now_iso(), "source_data_yaml": str(data_yaml),
         "source_root": str(next(iter(resolved.values()))[0]), "sources": sources, "params": params,

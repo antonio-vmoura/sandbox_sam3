@@ -15,9 +15,9 @@ orchestrated by **`run_pipeline_sam3.sh`**.
 
 | Aspect | How it is guaranteed |
 |---|---|
-| **Same data** | Phase 0 builds a COCO dataset **from the YOLO26 dataset itself**: same images (hard-linked), same split (2547 / 100 / 994), each YOLO polygon rasterised with the shared convention and stored as RLE. Every image carries its ISIC ID. |
+| **Same data** | Phase 0 builds a COCO dataset **from the YOLO26 dataset itself**: same images (hard-linked), same split (2,594 / 100 / 1,000, the official split), each YOLO polygon rasterised with the shared convention and stored as RLE. Every image carries its ISIC ID. |
 | **Same CV folds** | YOLO26's K-Fold algorithm (NumPy `RandomState(0)`) over the same pool order → **identical folds** (verified against the U-Net manifest; Phase 2 re-derives and checks them). |
-| **Same metrics, ground truth and resolution** | `sam3_seg/segmentation_metrics.py` is a **byte-identical copy** of YOLO26's. The predicted mask (union of the instances with score ≥ 0.5) is scored at the original 640×640 against the ground truth of the same polygons. |
+| **Same metrics, ground truth and resolution** | `sam3_seg/segmentation_metrics.py` is a **byte-identical copy** of YOLO26's. The predicted mask (union of the instances with score ≥ 0.5) is scored at the original dataset resolution against the ground truth of the same polygons. |
 | **Same selection criterion** | Every phase selects `best.pt` and stops early on the validation **per-image mean JSI**, computed with that same code. Phase 5 runs the **identical** validation pipeline on the test set (verified: it reproduces the trainer's validation JSI to the last digit). |
 | **Same profiling** | `benchmark_efficiency.py` is derived from YOLO26's: `torch.cuda.Event` timing, statistics, steady-state VRAM, contention checks and JSON schema; same `torch==2.5.1`. |
 
@@ -29,15 +29,15 @@ orchestrated by **`run_pipeline_sam3.sh`**.
 | Prompt | `"skin lesion"` (single COCO category) | clinically neutral (most ISIC lesions are benign) |
 | Input | 1008 × 1008 (native) | fixed by the architecture |
 | Precision / batch | FP32, batch 2, official activation checkpointing | memory probe below |
-| **Budget, Phases 1, 2, 4** | **30 epochs, patience 10** (YOLO26 / U-Net: 120 / 25) | one FP32 epoch ≈ 1.8 h on a V100S |
-| **HPO** | **10 trials × 10 epochs, patience 5** (YOLO26 / U-Net: 30 × 30); Optuna TPE with 5 start-up trials | compute; a foundation model starts from strong weights |
+| **Budget, Phases 1, 2, 4** | **30 epochs, no early stopping** (patience 30; YOLO26 / U-Net: 120 epochs, no early stopping) | one FP32 epoch ≈ 1.8 h on a V100S; early stopping on the 100-image validation split proved noise-driven in YOLO26 and the U-Net |
+| **HPO** | **10 trials × 10 epochs, no early stopping** (patience 10; YOLO26 / U-Net: 30 × 30); Optuna TPE with 5 start-up trials | compute; a foundation model starts from strong weights |
 | Search space | `lr_scale` [0.01, 0.2] log, `weight_decay` [0.01, 0.2] log, `lrd_vision_backbone` [0.6, 1.0], `scheduler_warmup` [1, 1000] steps log, `hflip_p` [0, 0.5], `resize_min_size` [320, 1008] step 16 | learning dynamics + the recipe's own augmentations only (no loss weights, no `focal_gamma`) |
 | Determinism | seeds, cuDNN deterministic, **deterministic `grid_sample`** (`sam3_seg/determinism.py`), warn-only deterministic algorithms | the ViT memory-efficient attention backward stays nondeterministic: PyTorch's strict mode would cost +33 % time (verified bit-exact, `strict_determinism` in `common.py`). Repeated / resumed runs differ by ≤ ~1e-4 in the weights (5th digit of val JSI). |
 | FP16 (Phase 5) | `torch.autocast(float16)`, FP32 weights | SAM 3's official mixed-precision path |
 
 **Memory / throughput probe** (`sam3_seg/probe_memory.py`, V100S 32 GB, FP32, official recipe):
 
-| Configuration | Result | Peak VRAM (alloc / device) | Step (median) | Epoch (2547 images) |
+| Configuration | Result | Peak VRAM (alloc / device) | Step (median) | Epoch (2594 images) |
 |---|---|---|---|---|
 | batch 2, activation checkpointing **off** (ViT + text encoder) | OOM at 30.9 GiB | — | — | — |
 | **batch 2, official activation checkpointing (used)** | fits | 12.8 / 16.5 GiB | 5.0 s | ≈ 106 min |
@@ -54,7 +54,7 @@ delete their weights and keep only metrics.
 |---|---|---|---|
 | **0 — Dataset** | COCO dataset from the YOLO26 dataset; per-split and per-fold annotation files; SHA-256 provenance | train / val / test | `prepare_dataset.py` |
 | **1 — Baseline** | Base setup + **official recipe** hyperparameters | train / val | `train_baseline_sam3.py` |
-| **2 — Baseline CV** | 5-fold CV with the Phase 1 configuration; pixel metrics per fold (640×640) | train ∪ val pool (**test excluded and verified**) | `train_cv_sam3.py`, `consolidate_cv_results_sam3.py` |
+| **2 — Baseline CV** | 5-fold CV with the Phase 1 configuration; pixel metrics per fold (dataset resolution) | train ∪ val pool (**test excluded and verified**) | `train_cv_sam3.py`, `consolidate_cv_results_sam3.py` |
 | **3 — HPO** | Optuna TPE, **seeded per proposal**, fault-tolerant (`hpo_state.json`, exit 75 → retried) | train / val | `tune_sam3.py`, `check_hpo_validity.py` |
 | **4 — Optimised** | Same base setup + Phase 3 hyperparameters | train / val | `train_optimized_sam3.py` |
 | **5 — Test set** | Baseline **and** Optimised: DSC, JSI, ISIC thresholded JSI, sensitivity, specificity (FP32 + FP16); batch-1 efficiency (FP32 + FP16); final report | **test** (only here) | `evaluate_test_set.py`, `benchmark_efficiency.py`, `build_final_report.py` |
@@ -75,6 +75,25 @@ killing a training mid-epoch and an HPO search mid-trial: the resumed HPO produc
 
 ---
 
+## ISIC 2018 Task 2 (lesion attributes) — Phase 0
+
+`prepare_dataset.py --task 2` builds a COCO dataset with **five categories whose names are the text prompts**
+("pigment network", "negative network", "streaks", "milia-like cyst", "globules") instead of the single
+"skin lesion" prompt; every attribute present in an image is one instance (its official mask as RLE), so overlapping
+attributes coexist and images without attributes have no instance. Input: the Task 2 YOLO26 dataset (built with
+YOLO26's `prepare_dataset.py --task 2`; mount it at `/workspace/yolo26_dataset_task2`); output:
+`datasets/isic_2018_task2_sam3`; same 2,594 / 100 / 1,000 images and CV folds.
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    -v "$(pwd)/datasets:/workspace/datasets" -v "$(pwd)/sam3_seg:/workspace/sam3_seg" \
+    -v "$(pwd)/../sandbox_yolo26/datasets/isic2018_task2_official:/workspace/yolo26_dataset_task2:ro" \
+    -w /workspace/sam3_seg --entrypoint python sam3_ft prepare_dataset.py --task 2
+```
+
+`--task 1` is the default everywhere (the orchestrator and `wait_gpu_sam3.sh` run Task 1); **Phases 1–5 currently
+implement Task 1 only** (the training recipe, prediction rule and metrics assume one prompt and one binary mask).
+
 ## Running the pipeline
 
 ### Build the image
@@ -92,6 +111,7 @@ with your token (`export HUGGING_FACE_HUB_TOKEN=...`); the pipeline then runs wi
 GPU=1                                  # host GPU index
 PIPELINE_NAME="pipeline_final_v1"
 
+mkdir -p "logs/${PIPELINE_NAME}"     # the terminal log goes inside the pipeline folder
 docker run --gpus "\"device=${GPU}\"" -it --rm --ipc=host \
     --user "$(id -u):$(id -g)" \
     -e HF_HOME=/workspace/cache/huggingface -e HF_HUB_OFFLINE=1 -e HOME=/workspace/cache \
@@ -101,11 +121,11 @@ docker run --gpus "\"device=${GPU}\"" -it --rm --ipc=host \
     -v "$(pwd)/sam3_cache:/workspace/cache" -v "$(pwd)/datasets:/workspace/datasets" \
     -v "$(pwd)/logs:/workspace/logs" \
     -v "$(pwd)/run_pipeline_sam3.sh:/workspace/run_pipeline_sam3.sh:ro" \
-    -v "$(pwd)/../sandbox_yolo26/datasets/isic_2018_task1_yolo26:/workspace/yolo26_dataset:ro" \
+    -v "$(pwd)/../sandbox_yolo26/datasets/isic2018_task1_official:/workspace/yolo26_dataset:ro" \
     -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
     --entrypoint bash sam3_ft \
     /workspace/run_pipeline_sam3.sh --yolo-data /workspace/yolo26_dataset/data.yaml \
-    2>&1 | tee "logs/${PIPELINE_NAME}_$(date -u +%Y%m%dT%H%M%SZ).log"
+    2>&1 | tee "logs/${PIPELINE_NAME}/terminal_$(date -u +%Y%m%dT%H%M%SZ).log"
 ```
 
 * The YOLO26 dataset is mounted **read-only** (it is the source of truth); Phase 0 writes
@@ -127,7 +147,7 @@ docker run --gpus "\"device=${GPU}\"" -it --rm --ipc=host \
 ```
 
 Environment overrides (defaults): `CV_K_FOLDS=5`, `CV_SEED=0`, `HPO_ITERATIONS=10`, `HPO_EPOCHS_PER_TRIAL=10`,
-`HPO_PATIENCE=5`, `HPO_MAX_RETRIES=5`, `HPO_RETRY_WAIT=600`, `EVAL_PRECISIONS="fp32 fp16"`, `YOLO_DATA_YAML`,
+`HPO_PATIENCE=10`, `HPO_MAX_RETRIES=5`, `HPO_RETRY_WAIT=600`, `EVAL_PRECISIONS="fp32 fp16"`, `YOLO_DATA_YAML`,
 `DATA_DIR`, `LOGS_ROOT`, `PROJECT`.
 
 Exit codes: `0` success · `75` the HPO gave up after repeated GPU failures (fix the driver and re-run to
@@ -151,7 +171,7 @@ GPU_DEVICE=1 ./wait_gpu_sam3.sh --phases "1 2"   # extra arguments go to run_pip
 **Accuracy (`evaluate_test_set.py`)** — test split only, batch 1, FP32 (primary) and FP16. Each run's own
 validation pipeline is rebuilt from its `config.yaml` (official transforms and postprocessor, prompt
 `"skin lesion"`), applied to `annotations/test.json`; per image the union of the instances with score ≥ 0.5 is
-scored at 640×640: DSC, JSI, ISIC thresholded JSI (`JSI < 0.65 → 0`), sensitivity, specificity, accuracy (empty
+scored at dataset resolution: DSC, JSI, ISIC thresholded JSI (`JSI < 0.65 → 0`), sensitivity, specificity, accuracy (empty
 prediction → 0, never skipped). Same aggregates and JSON/CSV schema as YOLO26; the Ultralytics-only instance
 metrics are present as `NaN` (the CV and validation tables carry SAM 3's official COCO mAP50-95 in
 `map5095_m` / `map5095_b`).
@@ -228,7 +248,10 @@ sandbox_sam3/
 ├── notebooks/
 │   ├── 01_Segmentation_Visualizer.ipynb
 │   └── 02_Metrics_and_Efficiency_Analysis.ipynb
-├── utils/                     # earlier notebooks and scripts
+├── utils/examples/            # Meta's SAM 3 example notebooks
+├── utils/legacy/              # earlier conversion / metric scripts (kept as a backup)
+├── notebooks/legacy/          # earlier analysis notebooks (kept as a backup)
+├── sam3/train/configs/custom/legacy/   # earlier training / HPO / CV configs
 └── datasets/  logs/  sam3_cache/   # not versioned
 ```
 

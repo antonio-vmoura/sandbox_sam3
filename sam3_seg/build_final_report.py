@@ -6,7 +6,7 @@ only adds columns), so the same notebooks — and a cross-architecture
 comparison — can read all three pipelines. SAM 3-specific differences: the
 Ultralytics instance metrics are NaN except the COCO mAP50-95 of SAM 3's
 official evaluator in the validation / CV rows; the CV pixel metrics come
-directly from the folds' validation (already at 640 × 640); the efficiency
+directly from the folds' validation (already at dataset resolution); the efficiency
 table adds the cached-text latency, per-component GFLOPs and the attention
 FLOP share; ``final_results.json`` records the SAM 3 protocol deviations
 (``protocol_notes``).
@@ -14,7 +14,7 @@ FLOP share; ``final_results.json`` records the SAM 3 protocol deviations
 Inputs (all produced by earlier steps of ``run_pipeline_sam3.sh``)::
 
     summary/phase1_val.json, summary/phase4_val.json        # single-split val metrics
-    phase2_cv_baseline/<m>/metrics_summary.json              # CV validation metrics (640x640)
+    phase2_cv_baseline/<m>/metrics_summary.json              # CV validation metrics (dataset resolution)
     phase3_hpo/tune_<m>/hpo_state.json                        # HPO bookkeeping
     phase5_test/accuracy/*.json, phase5_test/per_image/*.csv  # test accuracy
     phase5_test/efficiency/*.json                             # efficiency
@@ -200,7 +200,7 @@ class Report:
 
     # ---- Phase 2 (CV) -------------------------------------------------------
     def cross_validation(self) -> None:
-        """Collect CV metrics and the CV pixel metrics (mean ± sample std; already at 640 × 640)."""
+        """Collect CV metrics and the CV pixel metrics (mean ± sample std; already at dataset resolution)."""
         pixel_rows = []
         for m in self.models:
             root = self.paths.cv_model_dir(m, "baseline")

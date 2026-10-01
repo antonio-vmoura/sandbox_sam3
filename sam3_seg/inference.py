@@ -20,7 +20,7 @@ the same function of the model:
    ground truth with :func:`segmentation_metrics.pixel_scores` — the code shared
    with YOLO26 and the U-Net. The ground truth is the union of the image's
    COCO RLE masks, rasterised in Phase 0 from the **same YOLO polygons** with
-   the same convention, at the original 640 × 640 resolution.
+   the same convention, at the original dataset resolution.
 
 FP16 is SAM 3's official mixed-precision path (``torch.autocast`` float16,
 FP32 weights) — the model is not converted with ``.half()``.

@@ -10,7 +10,7 @@ YOLO26 format::
 The YOLO26 columns ``map5095_m`` / ``map5095_b`` hold SAM 3's official COCO
 mAP50-95 (segm / bbox); the other Ultralytics instance metrics (P, R, F1,
 mAP50) are not produced and are written as NaN. SAM 3's pixel metrics are
-reported in the ``val_*`` columns (640 × 640, same ground truth as YOLO26).
+reported in the ``val_*`` columns (dataset resolution, same ground truth as YOLO26).
 These are **validation-split** metrics; test-set metrics come from Phase 5.
 
 Usage:

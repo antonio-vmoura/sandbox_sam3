@@ -18,9 +18,9 @@ from them; only the model-specific parts differ). For every ``variant`` ×
     features of the fixed prompt are computed once (the deployment form when
     the prompt never changes).
   - ``end_to_end``: Meta's deployment API (``Sam3Processor``) on the decoded
-    test image (640×640): host→device copy, resize to 1008, normalisation,
+    test image (dataset resolution): host→device copy, resize to 1008, normalisation,
     image + text encoding, detection, score = sigmoid × presence, bilinear
-    mask upsampling to 640×640, sigmoid > 0.5, union of the instances with
+    mask upsampling to dataset resolution, sigmoid > 0.5, union of the instances with
     score > 0.5 and device→host copy of the binary mask. Timed with
     ``time.perf_counter`` around a synchronised call (it includes CPU work).
 
@@ -448,7 +448,7 @@ def benchmark_one(
 
 
 def _first_test_image(data_dir: str) -> str:
-    """Deterministic sample image for the end-to-end benchmark (first test image, 640×640)."""
+    """Deterministic sample image for the end-to-end benchmark (first test image, dataset resolution)."""
     from data import CocoData
 
     data = CocoData(data_dir)

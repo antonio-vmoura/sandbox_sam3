@@ -4,8 +4,11 @@ Ultralytics reports detection-style metrics (mAP, P, R) per *instance*. Lesion
 segmentation papers (ISIC 2018 Task 1) report *pixel-level* overlap between
 the ground-truth and the predicted lesion masks, which is computed here:
 
-* **Ground truth** — every polygon of the YOLO label file, rasterised at the
-  original image resolution (:func:`rasterize_yolo_label`) and merged (union).
+* **Ground truth** (:func:`ground_truth_mask`) — the dataset's mask image
+  (``masks/<stem>.png``, the official ISIC mask at the working resolution)
+  when the dataset has one; otherwise every polygon of the YOLO label file,
+  rasterised at the image resolution (:func:`rasterize_yolo_label`) and
+  merged (union).
 * **Prediction** — the union of every predicted instance mask with
   confidence ``>= conf``, produced at the original resolution
   (``retina_masks=True``) (:func:`predicted_union_mask`).
@@ -25,11 +28,11 @@ the ground-truth and the predicted lesion masks, which is computed here:
   - ``BIoU`` — Boundary IoU (Cheng et al., CVPR 2021): the IoU of the two
     *boundary bands*, i.e. the pixels of each mask within ``d`` pixels of its
     own contour, ``d`` = :data:`BOUNDARY_DILATION_RATIO` × image diagonal
-    (2 %, the authors' setting; 18 px at 640 × 640).
+    (2 %, the authors' setting; ≈ 26 px for a 1024 × 768 image).
   - ``NSD`` — Normalised Surface Distance / surface Dice (Nikolov et al.,
     2021): the fraction of contour pixels of both masks that lie within a
     tolerance ``tau`` of the other mask's contour, ``tau`` =
-    :data:`NSD_TOLERANCE_RATIO` × image diagonal (1 %; 9 px at 640 × 640).
+    :data:`NSD_TOLERANCE_RATIO` × image diagonal (1 %; ≈ 13 px for a 1024 × 768 image).
 
   Contours are the 1-pixel inner boundaries of the masks; the image border
   counts as background (zero padding), as in the reference BIoU code.
@@ -78,6 +81,30 @@ SCORE_KEYS: tuple[str, ...] = (
 def label_path_for(image_path: Path) -> Path:
     """Return the YOLO label path of an image (``/images/`` → ``/labels/``, ``.txt``)."""
     return Path(str(image_path).replace("/images/", "/labels/")).with_suffix(".txt")
+
+
+def mask_path_for(image_path: Path) -> Path:
+    """Return the ground-truth mask path of an image (``/images/`` → ``/masks/``, ``.png``)."""
+    return Path(str(image_path).replace("/images/", "/masks/")).with_suffix(".png")
+
+
+def ground_truth_mask(image_path: Path, height: int, width: int) -> np.ndarray:
+    """Ground-truth lesion mask of a dataset image at ``height × width``.
+
+    The official mask (``masks/<stem>.png``, written by Phase 0) is used when it exists — it is exact, whereas
+    the YOLO label is a polygon approximation for training. Datasets without mask images fall back to the
+    rasterised YOLO label.
+
+    Raises:
+        ValueError: If the mask image does not have the requested size.
+    """
+    mpath = mask_path_for(image_path)
+    if mpath.exists():
+        mask = cv2.imread(str(mpath), cv2.IMREAD_GRAYSCALE)
+        if mask is None or mask.shape != (height, width):
+            raise ValueError(f"{mpath}: mask {None if mask is None else mask.shape} != image {(height, width)}")
+        return mask > 127
+    return rasterize_yolo_label(label_path_for(image_path), height, width)
 
 
 def rasterize_yolo_label(label_path: Path, height: int, width: int) -> np.ndarray:
@@ -306,7 +333,7 @@ def evaluate_images(
         infer_ms = (time.perf_counter() - t0) * 1000
         h, w = result.orig_shape
         pred = predicted_union_mask(result, h, w)
-        gt = rasterize_yolo_label(label_path_for(img_path), h, w)
+        gt = ground_truth_mask(img_path, h, w)
         if mask_dir is not None:
             cv2.imwrite(str(Path(mask_dir) / f"{Path(img_path).stem}.png"),
                         pred.astype(np.uint8) * 255)

@@ -20,7 +20,7 @@ Design notes:
   ``val_sha256`` per fold).
 * **Test-set isolation.** The ``test`` split is never in the pool; the script
   additionally aborts if any test ID appears in it.
-* **Resolution.** The pixel metrics are computed at the 640 × 640 resolution
+* **Resolution.** The pixel metrics are computed at the dataset resolution
   of the shared dataset (same ground truth as YOLO26), directly from the
   validation predictions of each fold — no separate re-evaluation step.
 * **Fault tolerance.** Each fold is a resumable run

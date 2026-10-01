@@ -42,7 +42,7 @@ from typing import Any, Iterator, Union
 DEFAULT_ORDER: list[str] = ["sam3"]
 
 #: YOLO-format dataset — the single source of truth shared with YOLO26 and U-Net.
-DEFAULT_YOLO_DATA_YAML: str = "/workspace/datasets/isic_2018_task1_yolo26/data.yaml"
+DEFAULT_YOLO_DATA_YAML: str = "/workspace/yolo26_dataset/data.yaml"
 
 #: Phase 0 output: COCO dataset (shared image pool + per-split / per-fold annotations).
 DEFAULT_DATA_DIR: str = "/workspace/datasets/isic_2018_task1_sam3"

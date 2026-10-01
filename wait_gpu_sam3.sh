@@ -17,7 +17,7 @@
 
 GPU_DEVICE="${GPU_DEVICE:-0}"
 PIPELINE_NAME="${PIPELINE_NAME:-pipeline_final_v1}"
-YOLO26_DATASET="${YOLO26_DATASET:-$(pwd)/../sandbox_yolo26/datasets/isic_2018_task1_yolo26}"
+YOLO26_DATASET="${YOLO26_DATASET:-$(pwd)/../sandbox_yolo26/datasets/isic2018_task1_official}"
 CHECK_INTERVAL=60
 REQUIRED_IDLE_MINUTES=3
 IDLE_COUNT=0

@@ -38,7 +38,7 @@
 #     -v "$PWD/sam3:/workspace/sam3" -v "$PWD/sam3_seg:/workspace/sam3_seg" \
 #     -v "$PWD/sam3_cache:/workspace/cache" -v "$PWD/datasets:/workspace/datasets" \
 #     -v "$PWD/logs:/workspace/logs" -v "$PWD/run_pipeline_sam3.sh:/workspace/run_pipeline_sam3.sh:ro" \
-#     -v "<sandbox_yolo26>/datasets/isic_2018_task1_yolo26:/workspace/yolo26_dataset:ro" \
+#     -v "<sandbox_yolo26>/datasets/isic2018_task1_official:/workspace/yolo26_dataset:ro" \
 #     -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
 #     --entrypoint bash sam3_ft /workspace/run_pipeline_sam3.sh --device 0 \
 #     --yolo-data /workspace/yolo26_dataset/data.yaml
@@ -48,7 +48,7 @@
 set -euo pipefail
 
 # ---------- Defaults ---------------------------------------------------------
-YOLO_DATA_YAML="${YOLO_DATA_YAML:-/workspace/datasets/isic_2018_task1_yolo26/data.yaml}"
+YOLO_DATA_YAML="${YOLO_DATA_YAML:-/workspace/yolo26_dataset/data.yaml}"
 DATA_DIR="${DATA_DIR:-/workspace/datasets/isic_2018_task1_sam3}"
 LOGS_ROOT="${LOGS_ROOT:-/workspace/logs}"
 PIPELINE_NAME="${PIPELINE_NAME:-pipeline_final_v1}"

@@ -29,8 +29,8 @@ orchestrated by **`run_pipeline_sam3.sh`**.
 | Prompt | `"skin lesion"` (single COCO category) | clinically neutral (most ISIC lesions are benign) |
 | Input | 1008 × 1008 (native) | fixed by the architecture |
 | Precision / batch | FP32, batch 2, official activation checkpointing | memory probe below |
-| **Budget, Phases 1, 2, 4** | **30 epochs, patience 10** (YOLO26 / U-Net: 120 / 25) | one FP32 epoch ≈ 1.8 h on a V100S |
-| **HPO** | **10 trials × 10 epochs, patience 5** (YOLO26 / U-Net: 30 × 30); Optuna TPE with 5 start-up trials | compute; a foundation model starts from strong weights |
+| **Budget, Phases 1, 2, 4** | **30 epochs, no early stopping** (patience 30; YOLO26 / U-Net: 120 epochs, no early stopping) | one FP32 epoch ≈ 1.8 h on a V100S; early stopping on the 100-image validation split proved noise-driven in YOLO26 and the U-Net |
+| **HPO** | **10 trials × 10 epochs, no early stopping** (patience 10; YOLO26 / U-Net: 30 × 30); Optuna TPE with 5 start-up trials | compute; a foundation model starts from strong weights |
 | Search space | `lr_scale` [0.01, 0.2] log, `weight_decay` [0.01, 0.2] log, `lrd_vision_backbone` [0.6, 1.0], `scheduler_warmup` [1, 1000] steps log, `hflip_p` [0, 0.5], `resize_min_size` [320, 1008] step 16 | learning dynamics + the recipe's own augmentations only (no loss weights, no `focal_gamma`) |
 | Determinism | seeds, cuDNN deterministic, **deterministic `grid_sample`** (`sam3_seg/determinism.py`), warn-only deterministic algorithms | the ViT memory-efficient attention backward stays nondeterministic: PyTorch's strict mode would cost +33 % time (verified bit-exact, `strict_determinism` in `common.py`). Repeated / resumed runs differ by ≤ ~1e-4 in the weights (5th digit of val JSI). |
 | FP16 (Phase 5) | `torch.autocast(float16)`, FP32 weights | SAM 3's official mixed-precision path |
@@ -127,7 +127,7 @@ docker run --gpus "\"device=${GPU}\"" -it --rm --ipc=host \
 ```
 
 Environment overrides (defaults): `CV_K_FOLDS=5`, `CV_SEED=0`, `HPO_ITERATIONS=10`, `HPO_EPOCHS_PER_TRIAL=10`,
-`HPO_PATIENCE=5`, `HPO_MAX_RETRIES=5`, `HPO_RETRY_WAIT=600`, `EVAL_PRECISIONS="fp32 fp16"`, `YOLO_DATA_YAML`,
+`HPO_PATIENCE=10`, `HPO_MAX_RETRIES=5`, `HPO_RETRY_WAIT=600`, `EVAL_PRECISIONS="fp32 fp16"`, `YOLO_DATA_YAML`,
 `DATA_DIR`, `LOGS_ROOT`, `PROJECT`.
 
 Exit codes: `0` success · `75` the HPO gave up after repeated GPU failures (fix the driver and re-run to

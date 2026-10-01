@@ -85,7 +85,7 @@ BASE_CHECK_KEYS: tuple[str, ...] = (
 
 #: SAM 3 deviations from the YOLO26 / U-Net protocol (disclosed in the report).
 PROTOCOL_NOTES: list[str] = [
-    f"Training budget {TRAIN_EPOCHS} epochs / patience {TRAIN_PATIENCE} (YOLO26, U-Net: 120 / 25): "
+    f"Training budget {TRAIN_EPOCHS} epochs / patience {TRAIN_PATIENCE} (YOLO26, U-Net: 120 / 120), i.e. no early stopping: "
     "one FP32 epoch of the 840 M-parameter model takes ~1.8 h on a V100S.",
     f"HPO {HPO_ITERATIONS} trials x {HPO_EPOCHS} epochs, patience {HPO_PATIENCE} (YOLO26, U-Net: 30 x 30), "
     "Optuna TPE with 5 start-up trials.",

@@ -22,8 +22,8 @@
 # between Baseline and Optimised.
 #
 # Compute budget (SAM 3-specific, disclosed; one FP32 epoch ~ 2 h on a V100S):
-#   Phases 1, 2, 4: 30 epochs, patience 10   (YOLO26 / U-Net: 120 / 25)
-#   Phase 3:        10 trials x 10 epochs, patience 5   (YOLO26 / U-Net: 30 x 30)
+#   Phases 1, 2, 4: 30 epochs, patience 30 = no early stopping   (YOLO26 / U-Net: 120 / 120)
+#   Phase 3:        10 trials x 10 epochs, patience 10 = no early stopping   (YOLO26 / U-Net: 30 x 30)
 #
 # Fault tolerance: every step is idempotent and resumable — re-running the
 # same command continues where it stopped; interrupted trainings resume from
@@ -66,7 +66,7 @@ MODELS=(sam3)
 PHASES=(0 1 2 3 4 5)
 
 # Training budget of Phases 1, 2 and 4 (empty = defaults in common.py:
-# 30 epochs / patience 10). Override ONLY for smoke tests.
+# 30 epochs / patience 30). Override ONLY for smoke tests.
 TRAIN_EPOCHS="${TRAIN_EPOCHS:-}"
 TRAIN_PATIENCE="${TRAIN_PATIENCE:-}"
 
@@ -74,10 +74,10 @@ TRAIN_PATIENCE="${TRAIN_PATIENCE:-}"
 CV_K_FOLDS="${CV_K_FOLDS:-5}"
 CV_SEED="${CV_SEED:-0}"
 
-# Phase 3 (HPO) — SAM 3-specific budget (YOLO26 / U-Net: 30 x 30, patience 10).
+# Phase 3 (HPO) — SAM 3-specific budget (YOLO26 / U-Net: 30 x 30, patience 30).
 HPO_ITERATIONS="${HPO_ITERATIONS:-10}"
 HPO_EPOCHS_PER_TRIAL="${HPO_EPOCHS_PER_TRIAL:-10}"
-HPO_PATIENCE="${HPO_PATIENCE:-5}"
+HPO_PATIENCE="${HPO_PATIENCE:-10}"   # = epochs per trial: no early stopping
 HPO_MAX_RETRIES="${HPO_MAX_RETRIES:-5}"
 HPO_RETRY_WAIT="${HPO_RETRY_WAIT:-600}"
 
@@ -267,14 +267,14 @@ log "  data           = ${DATA_DIR}"
 log "  project        = ${PROJECT}"
 log "  device         = ${GPU_DEVICE}   (Phase 5 bench device = ${BENCH_DEVICE})"
 log "  phases         = ${PHASES[*]}"
-log "  train budget   = ${TRAIN_EPOCHS:-30 (default)} epochs, patience ${TRAIN_PATIENCE:-10 (default)}  [Phases 1, 2, 4]"
+log "  train budget   = ${TRAIN_EPOCHS:-30 (default)} epochs, patience ${TRAIN_PATIENCE:-30 (default)}  [Phases 1, 2, 4]"
 log "  cv             = k=${CV_K_FOLDS}, seed=${CV_SEED}"
 log "  hpo            = Optuna TPE, trials=${HPO_ITERATIONS}, ep/trial=${HPO_EPOCHS_PER_TRIAL}, patience=${HPO_PATIENCE}, retries=${HPO_MAX_RETRIES} x ${HPO_RETRY_WAIT}s"
 log "  precisions     = ${EVAL_PRECISIONS}  [Phase 5]"
 log "  force          = ${FORCE_FLAG:-<off>}"
 log "  sam3_seg_dir   = ${SAM3_SEG_DIR}"
 if [[ -n "${TRAIN_EPOCHS}${TRAIN_PATIENCE}" ]]; then
-    log "  [aviso] orçamento de treino diferente do protocolo (30/10) — use apenas para smoke tests."
+    log "  [aviso] orçamento de treino diferente do protocolo (30/30) — use apenas para smoke tests."
 fi
 log "--------------------------------------------------------------"
 

@@ -57,16 +57,20 @@ PROMPT: str = "skin lesion"
 SEED: int = 0
 
 #: Training budget shared by Phases 1, 2 and 4 — **SAM 3-specific** (YOLO26 and
-#: the U-Net use 120 / 25). One FP32 epoch of the 840 M-parameter model takes
+#: the U-Net use 120 epochs). One FP32 epoch of the 840 M-parameter model takes
 #: ~106 min on the V100S (memory probe), so 120 epochs (> 8 days per run) are
 #: infeasible; this reduced budget is a disclosed limitation of the study.
+#: Patience = epochs, i.e. no early stopping (as YOLO26 and the U-Net): on the
+#: 100-image validation split early stopping was noise-driven in both other
+#: pipelines and stopped training prematurely.
 TRAIN_EPOCHS: int = 30
-TRAIN_PATIENCE: int = 10
+TRAIN_PATIENCE: int = 30
 
-#: Phase 3 budget (SAM 3-specific; YOLO26 / U-Net: 30 trials x 30 epochs).
+#: Phase 3 budget (SAM 3-specific; YOLO26 / U-Net: 30 trials x 30 epochs);
+#: patience = epochs per trial (no early stopping).
 HPO_ITERATIONS: int = 10
 HPO_EPOCHS: int = 10
-HPO_PATIENCE: int = 5
+HPO_PATIENCE: int = 10
 
 #: SAM 3 native input resolution.
 RESOLUTION: int = 1008

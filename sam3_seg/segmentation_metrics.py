@@ -63,6 +63,11 @@ import numpy as np
 #: ISIC 2018 Task 1 threshold for the thresholded Jaccard index.
 ISIC_JSI_THRESHOLD: float = 0.65
 
+#: ISIC 2018 Task 2 lesion attributes; the YOLO class id of an attribute is its index.
+ISIC2018_ATTRIBUTES: tuple[str, ...] = (
+    "pigment_network", "negative_network", "streaks", "milia_like_cyst", "globules",
+)
+
 #: Boundary-band width of the Boundary IoU, as a fraction of the image diagonal.
 BOUNDARY_DILATION_RATIO: float = 0.02
 
@@ -107,7 +112,27 @@ def ground_truth_mask(image_path: Path, height: int, width: int) -> np.ndarray:
     return rasterize_yolo_label(label_path_for(image_path), height, width)
 
 
-def rasterize_yolo_label(label_path: Path, height: int, width: int) -> np.ndarray:
+def class_mask_path_for(image_path: Path, class_name: str) -> Path:
+    """Ground-truth mask of one class (Task 2 attribute): ``/images/`` → ``/masks/<class_name>/``, ``.png``."""
+    return Path(str(image_path).replace("/images/", f"/masks/{class_name}/")).with_suffix(".png")
+
+
+def ground_truth_class_mask(image_path: Path, class_name: str, class_id: int, height: int, width: int) -> np.ndarray:
+    """Ground-truth mask of one class of a multi-label dataset (ISIC 2018 Task 2 attribute).
+
+    The official attribute mask (``masks/<class_name>/<stem>.png``, written by Phase 0) when it exists,
+    otherwise the polygons of class ``class_id`` of the YOLO label, rasterised. Classes may overlap.
+    """
+    mpath = class_mask_path_for(image_path, class_name)
+    if mpath.exists():
+        mask = cv2.imread(str(mpath), cv2.IMREAD_GRAYSCALE)
+        if mask is None or mask.shape != (height, width):
+            raise ValueError(f"{mpath}: mask {None if mask is None else mask.shape} != image {(height, width)}")
+        return mask > 127
+    return rasterize_yolo_label(label_path_for(image_path), height, width, class_id=class_id)
+
+
+def rasterize_yolo_label(label_path: Path, height: int, width: int, class_id: int | None = None) -> np.ndarray:
     """Rasterise a YOLO label file into a binary union mask at full resolution.
 
     Segmentation lines (``cls x1 y1 x2 y2 ...``, normalised) are filled as
@@ -118,6 +143,7 @@ def rasterize_yolo_label(label_path: Path, height: int, width: int) -> np.ndarra
         label_path: Path to the ``.txt`` label.
         height: Image height in pixels.
         width: Image width in pixels.
+        class_id: Rasterise only the lines of this class (multi-label datasets); ``None`` = all lines.
 
     Returns:
         ``bool`` array of shape ``(height, width)``.
@@ -128,7 +154,7 @@ def rasterize_yolo_label(label_path: Path, height: int, width: int) -> np.ndarra
     scale = np.array([width, height], dtype=np.float64)
     for line in Path(label_path).read_text().splitlines():
         vals = line.split()
-        if len(vals) < 5:
+        if len(vals) < 5 or (class_id is not None and int(float(vals[0])) != class_id):
             continue
         coords = np.array(vals[1:], dtype=np.float64)
         if len(coords) == 4:  # bounding box

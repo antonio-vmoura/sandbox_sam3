@@ -75,6 +75,25 @@ killing a training mid-epoch and an HPO search mid-trial: the resumed HPO produc
 
 ---
 
+## ISIC 2018 Task 2 (lesion attributes) — Phase 0
+
+`prepare_dataset.py --task 2` builds a COCO dataset with **five categories whose names are the text prompts**
+("pigment network", "negative network", "streaks", "milia-like cyst", "globules") instead of the single
+"skin lesion" prompt; every attribute present in an image is one instance (its official mask as RLE), so overlapping
+attributes coexist and images without attributes have no instance. Input: the Task 2 YOLO26 dataset (built with
+YOLO26's `prepare_dataset.py --task 2`; mount it at `/workspace/yolo26_dataset_task2`); output:
+`datasets/isic_2018_task2_sam3`; same 2,594 / 100 / 1,000 images and CV folds.
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    -v "$(pwd)/datasets:/workspace/datasets" -v "$(pwd)/sam3_seg:/workspace/sam3_seg" \
+    -v "$(pwd)/../sandbox_yolo26/datasets/isic2018_task2_official:/workspace/yolo26_dataset_task2:ro" \
+    -w /workspace/sam3_seg --entrypoint python sam3_ft prepare_dataset.py --task 2
+```
+
+`--task 1` is the default everywhere (the orchestrator and `wait_gpu_sam3.sh` run Task 1); **Phases 1–5 currently
+implement Task 1 only** (the training recipe, prediction rule and metrics assume one prompt and one binary mask).
+
 ## Running the pipeline
 
 ### Build the image

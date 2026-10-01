@@ -163,3 +163,6 @@ Thumbs.db
 
 # Heavy datasets
 datasets/*
+
+#My files
+METHODOLOGY_NOTES_FOR_ARTICLE.md

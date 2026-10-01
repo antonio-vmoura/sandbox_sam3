@@ -11,9 +11,10 @@ touches it:
   run's own validation pipeline (the one that selected ``best.pt``): official
   transforms (1008 × 1008) and postprocessor, prompt ``"skin lesion"``; the
   predicted mask is the union of the instances with score >= 0.5, at the
-  original dataset resolution; scored against the ground truth rasterised
-  from the **same YOLO polygons** with :func:`segmentation_metrics.pixel_scores`:
-  DSC, JSI, ISIC thresholded JSI (0.65), sensitivity, specificity, accuracy.
+  original dataset resolution; scored against the **same official ISIC mask**
+  as YOLO26 and the U-Net (stored losslessly as RLE in Phase 0) with
+  :func:`segmentation_metrics.pixel_scores`: DSC, JSI, ISIC thresholded JSI
+  (0.65), sensitivity, specificity, accuracy, Boundary IoU, NSD, HD95.
   Empty predictions score 0 (never skipped). Aggregates: per-image mean,
   sample std, median, IQR, seeded bootstrap 95 % CI, pooled DSC/JSI
   (:func:`segmentation_metrics.aggregate_scores`).

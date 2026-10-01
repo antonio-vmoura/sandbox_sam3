@@ -33,6 +33,12 @@ the ground-truth and the predicted lesion masks, which is computed here:
     2021): the fraction of contour pixels of both masks that lie within a
     tolerance ``tau`` of the other mask's contour, ``tau`` =
     :data:`NSD_TOLERANCE_RATIO` × image diagonal (1 %; ≈ 13 px for a 1024 × 768 image).
+  - ``HD95`` — 95th-percentile symmetric Hausdorff distance, in **pixels at
+    the dataset resolution** (lower is better): the larger of the two directed
+    95th percentiles of the contour-to-contour distances (ground truth →
+    prediction and prediction → ground truth), the convention of MONAI and of
+    DeepMind's ``surface-distance`` package. It reports the size of the
+    boundary errors, which BIoU and NSD (fractions within a tolerance) do not.
 
   Contours are the 1-pixel inner boundaries of the masks; the image border
   counts as background (zero padding), as in the reference BIoU code.
@@ -43,7 +49,10 @@ Empty masks are handled explicitly, never by dividing by zero:
   row is flagged ``both_empty``. Sensitivity is undefined (NaN).
 * Exactly one of them empty → DSC = JSI = 0 (flagged ``empty_pred`` or
   ``empty_gt``). A missed lesion therefore counts as a full failure in the mean.
-  The boundary scores follow the same rule (1 if both empty, 0 if one is).
+  The boundary scores follow the same rule (1 if both empty, 0 if one is);
+  HD95 is 0 if both are empty and the worst possible value, the image
+  diagonal, if one is (Metrics Reloaded: penalise, never drop, missing
+  predictions in distance-based metrics).
 
 Dataset-level aggregates (:func:`aggregate_scores`) report the per-image mean
 (macro, the primary figure), sample std (ddof=1), median, IQR, a seeded
@@ -74,10 +83,16 @@ BOUNDARY_DILATION_RATIO: float = 0.02
 #: Tolerance of the Normalised Surface Distance, as a fraction of the image diagonal.
 NSD_TOLERANCE_RATIO: float = 0.01
 
+#: Percentile of the robust Hausdorff distance (HD95).
+HAUSDORFF_PERCENTILE: float = 95.0
+
 #: Per-image score columns aggregated by :func:`aggregate_scores`.
 SCORE_KEYS: tuple[str, ...] = (
-    "dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy", "biou", "nsd",
+    "dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy", "biou", "nsd", "hd95",
 )
+
+#: Scores for which lower is better (distances, in pixels at dataset resolution).
+LOWER_IS_BETTER: frozenset[str] = frozenset({"hd95"})
 
 
 # ----------------------------------------------------------------------------
@@ -208,11 +223,11 @@ def _contour(mask: np.ndarray) -> np.ndarray:
 
 
 def boundary_scores(gt: np.ndarray, pred: np.ndarray) -> dict[str, float]:
-    """Boundary IoU and Normalised Surface Distance of one image (see module docstring)."""
+    """Boundary IoU, Normalised Surface Distance and HD95 of one image (see module docstring)."""
+    diag = math.hypot(*gt.shape)
     if not gt.any() or not pred.any():
         both = not gt.any() and not pred.any()
-        return {"biou": float(both), "nsd": float(both)}
-    diag = math.hypot(*gt.shape)
+        return {"biou": float(both), "nsd": float(both), "hd95": 0.0 if both else float(diag)}
     d = max(1.0, BOUNDARY_DILATION_RATIO * diag)
     tau = max(1.0, NSD_TOLERANCE_RATIO * diag)
     band_gt = gt & (_distance_to_zero(gt) <= d)
@@ -221,9 +236,11 @@ def boundary_scores(gt: np.ndarray, pred: np.ndarray) -> dict[str, float]:
     c_gt, c_pred = _contour(gt), _contour(pred)
     to_gt = _distance_to_zero(~c_gt, border=1)      # distance to the nearest ground-truth contour pixel
     to_pred = _distance_to_zero(~c_pred, border=1)
-    hits = np.count_nonzero(to_pred[c_gt] <= tau) + np.count_nonzero(to_gt[c_pred] <= tau)
-    nsd = hits / (np.count_nonzero(c_gt) + np.count_nonzero(c_pred))
-    return {"biou": float(biou), "nsd": float(nsd)}
+    gt_to_pred, pred_to_gt = to_pred[c_gt], to_gt[c_pred]
+    hits = np.count_nonzero(gt_to_pred <= tau) + np.count_nonzero(pred_to_gt <= tau)
+    nsd = hits / (len(gt_to_pred) + len(pred_to_gt))
+    hd95 = max(np.percentile(gt_to_pred, HAUSDORFF_PERCENTILE), np.percentile(pred_to_gt, HAUSDORFF_PERCENTILE))
+    return {"biou": float(biou), "nsd": float(nsd), "hd95": float(hd95)}
 
 
 def pixel_scores(gt: np.ndarray, pred: np.ndarray) -> dict[str, Any]:

@@ -18,7 +18,7 @@ orchestrated by **`run_pipeline_sam3.sh`**.
 | **Same data** | Phase 0 builds a COCO dataset **from the YOLO26 dataset itself**: same images (hard-linked), same split (2,594 / 100 / 1,000, the official split), each YOLO polygon rasterised with the shared convention and stored as RLE. Every image carries its ISIC ID. |
 | **Same CV folds** | YOLO26's K-Fold algorithm (NumPy `RandomState(0)`) over the same pool order → **identical folds** (verified against the U-Net manifest; Phase 2 re-derives and checks them). |
 | **Same metrics, ground truth and resolution** | `sam3_seg/segmentation_metrics.py` is a **byte-identical copy** of YOLO26's. The predicted mask (union of the instances with score ≥ 0.5) is scored at the original dataset resolution against the ground truth of the same polygons. |
-| **Same selection criterion** | Every phase selects `best.pt` and stops early on the validation **per-image mean JSI**, computed with that same code. Phase 5 runs the **identical** validation pipeline on the test set (verified: it reproduces the trainer's validation JSI to the last digit). |
+| **Same selection criterion as the U-Net** | Every phase selects `best.pt` on the validation **per-image mean JSI** (no early stopping: patience = epochs), computed with that same code (YOLO26 selects on the Ultralytics fitness, box + mask mAP50-95). Phase 5 runs the **identical** validation pipeline on the test set (verified: it reproduces the trainer's validation JSI to the last digit). |
 | **Same profiling** | `benchmark_efficiency.py` is derived from YOLO26's: `torch.cuda.Event` timing, statistics, steady-state VRAM, contention checks and JSON schema; same `torch==2.5.1`. |
 
 ## SAM 3-specific protocol decisions (disclosed in the report)
@@ -57,7 +57,7 @@ delete their weights and keep only metrics.
 | **2 — Baseline CV** | 5-fold CV with the Phase 1 configuration; pixel metrics per fold (dataset resolution) | train ∪ val pool (**test excluded and verified**) | `train_cv_sam3.py`, `consolidate_cv_results_sam3.py` |
 | **3 — HPO** | Optuna TPE, **seeded per proposal**, fault-tolerant (`hpo_state.json`, exit 75 → retried) | train / val | `tune_sam3.py`, `check_hpo_validity.py` |
 | **4 — Optimised** | Same base setup + Phase 3 hyperparameters | train / val | `train_optimized_sam3.py` |
-| **5 — Test set** | Baseline **and** Optimised: DSC, JSI, ISIC thresholded JSI, sensitivity, specificity (FP32 + FP16); batch-1 efficiency (FP32 + FP16); final report | **test** (only here) | `evaluate_test_set.py`, `benchmark_efficiency.py`, `build_final_report.py` |
+| **5 — Test set** | Baseline **and** Optimised: DSC, JSI, ISIC thresholded JSI, sensitivity, specificity, Boundary IoU, NSD, HD95 with bootstrap 95 % CI (FP32 + FP16); batch-1 efficiency — median/P95 latency, FPS, peak VRAM (FP32 + FP16); final report | **test** (only here) | `evaluate_test_set.py`, `benchmark_efficiency.py`, `build_final_report.py` |
 
 **How the official trainer is wrapped.** `ProtocolTrainer` (`sam3_seg/protocol_trainer.py`) subclasses
 `sam3.train.trainer.Trainer` and only replaces the epoch loop: train one epoch (official) → validate (official
@@ -172,7 +172,7 @@ GPU_DEVICE=1 ./wait_gpu_sam3.sh --phases "1 2"   # extra arguments go to run_pip
 validation pipeline is rebuilt from its `config.yaml` (official transforms and postprocessor, prompt
 `"skin lesion"`), applied to `annotations/test.json`; per image the union of the instances with score ≥ 0.5 is
 scored at dataset resolution: DSC, JSI, ISIC thresholded JSI (`JSI < 0.65 → 0`), sensitivity, specificity, accuracy (empty
-prediction → 0, never skipped). Same aggregates and JSON/CSV schema as YOLO26; the Ultralytics-only instance
+prediction → 0, never skipped), Boundary IoU, NSD and HD95 (as YOLO26). Same aggregates and JSON/CSV schema as YOLO26; the Ultralytics-only instance
 metrics are present as `NaN` (the CV and validation tables carry SAM 3's official COCO mAP50-95 in
 `map5095_m` / `map5095_b`).
 
@@ -180,9 +180,15 @@ metrics are present as `NaN` (the CV and validation tables carry SAM 3's officia
 
 * `forward`: image encoder + text encoder + detector on a pre-processed real test image (1×3×1008×1008) with
   `torch.cuda.Event` (50 warm-up + 500 timed); `forward_cached_text`: the same with the prompt's text features
-  precomputed (fixed-prompt deployment); `end_to_end`: Meta's deployment API `Sam3Processor` (640 image →
-  resize → forward → mask upsampling → threshold → host) with `perf_counter` (20 + 200);
+  precomputed (fixed-prompt deployment); `end_to_end`: Meta's deployment API `Sam3Processor` (test image at
+  dataset resolution → resize → forward → mask upsampling → threshold → host) with `perf_counter` (20 + 200);
 * mean, SD, median, P90/P95/P99, FPS = 1000 / mean; steady-state peak VRAM after warm-up, weight VRAM, host RAM;
+* **Driver-level VRAM**: `vram_process_peak_mb` = device memory held by the benchmark process at the end of the
+  forward / end-to-end loops (CUDA context, kernels and allocator cache included; `nvidia-smi` delta) and
+  `vram_cuda_context_mb` — the memory a deployment GPU must provide, next to the allocator peak (the model).
+* **`end_to_end_dataset`**: the end-to-end pipeline once on each of the first 100 test images sorted by ISIC ID
+  (the same images in the three repositories; `--e2e-images`), after one untimed pass — median/P95 over real,
+  varying inputs. The real-time criterion in the notebooks uses its P95.
 * parameters — 840,509,750 in total: vision backbone 454.0 M, text encoder 353.7 M, transformer 21.0 M,
   geometry encoder 8.2 M, segmentation head 2.3 M, scoring 1.2 M (`params_without_text` = 486.8 M);
 * **GFLOPs measured natively with `torch.utils.flop_counter.FlopCounterMode`** (2 × MACs, the YOLO26 / thop
@@ -264,7 +270,8 @@ Same notebooks as YOLO26 and the U-Net, adapted to SAM 3 (they read only the pip
 `02_Metrics_and_Efficiency_Analysis` (DSC/JSI across phases, paired HPO gain, accuracy vs. size, latency vs.
 FPS, latency distribution, memory, accuracy–latency trade-off, **compute breakdown** — stage and attention vs.
 linear vs. convolution — and a **cross-architecture comparison** read from `../sandbox_yolo26` and
-`../sandbox_unet` when their summaries exist; LaTeX tables).
+`../sandbox_unet` when their summaries exist; LaTeX tables; standard figures A–C shared with YOLO26 and the U-Net).
+The full cross-architecture article notebook is in `article/` (see `article/README.md`).
 
 ```bash
 docker run --rm -it -p 8888:8888 --user "$(id -u):$(id -g)" -e HOME=/workspace/cache \

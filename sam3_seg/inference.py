@@ -19,8 +19,9 @@ the same function of the model:
    :func:`protocol_trainer.pixel_metrics_from_dump`, and is scored against the
    ground truth with :func:`segmentation_metrics.pixel_scores` — the code shared
    with YOLO26 and the U-Net. The ground truth is the union of the image's
-   COCO RLE masks, rasterised in Phase 0 from the **same YOLO polygons** with
-   the same convention, at the original dataset resolution.
+   COCO RLE masks, encoded losslessly in Phase 0 from the **official ISIC mask**
+   (``segmentation_metrics.ground_truth_mask``, the ground truth of all three
+   pipelines), at the original dataset resolution.
 
 FP16 is SAM 3's official mixed-precision path (``torch.autocast`` float16,
 FP32 weights) — the model is not converted with ``.half()``.
@@ -47,7 +48,7 @@ from protocol_trainer import union_masks
 from segmentation_metrics import pixel_scores
 
 #: Version of the evaluation method (part of the result cache keys).
-EVAL_VERSION: int = 2   # 2: + boundary metrics (BIoU, NSD)
+EVAL_VERSION: int = 3   # 2: + boundary metrics (BIoU, NSD); 3: + HD95
 
 #: Instance score threshold of the merged binary mask (as in validation).
 SCORE_THRESHOLD: float = float(BASE_SETUP["score_threshold"])

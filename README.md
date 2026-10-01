@@ -248,7 +248,10 @@ sandbox_sam3/
 ├── notebooks/
 │   ├── 01_Segmentation_Visualizer.ipynb
 │   └── 02_Metrics_and_Efficiency_Analysis.ipynb
-├── utils/                     # earlier notebooks and scripts
+├── utils/examples/            # Meta's SAM 3 example notebooks
+├── utils/legacy/              # earlier conversion / metric scripts (kept as a backup)
+├── notebooks/legacy/          # earlier analysis notebooks (kept as a backup)
+├── sam3/train/configs/custom/legacy/   # earlier training / HPO / CV configs
 └── datasets/  logs/  sam3_cache/   # not versioned
 ```
 

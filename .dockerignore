@@ -8,3 +8,6 @@ logs/
 data/
 ph2_dataset/
 outputs/
+datasets/
+sam3_cache/
+cache/

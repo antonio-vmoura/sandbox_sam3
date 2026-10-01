@@ -10,7 +10,8 @@
 #    o bloco ``docker run`` abaixo.
 #
 # O pipeline é retomável: relançar o mesmo comando continua um estudo
-# interrompido em vez de recomeçá-lo. Argumentos extras são repassados ao
+# interrompido em vez de recomeçá-lo (relance SEM --force). O log do terminal
+# fica em logs/${PIPELINE_NAME}/terminal_<UTC>.log. Argumentos extras são repassados ao
 # run_pipeline_sam3.sh (ex.: ./wait_gpu_sam3.sh --phases "1 2").
 # =============================================================================
 
@@ -47,7 +48,7 @@ done
 # O dataset YOLO26 (fonte única de verdade) é montado somente-leitura; o
 # dataset COCO da Fase 0 é escrito em datasets/isic_2018_task1_sam3. Os pesos
 # do SAM 3 vêm do cache local do Hugging Face (sam3_cache/, modo offline).
-mkdir -p logs
+mkdir -p "logs/${PIPELINE_NAME}"
 docker run --gpus "\"device=${GPU_DEVICE}\"" --rm --ipc=host \
   --user "$(id -u):$(id -g)" \
   -e HF_HOME=/workspace/cache/huggingface -e HF_HUB_OFFLINE=1 -e HOME=/workspace/cache \
@@ -61,4 +62,4 @@ docker run --gpus "\"device=${GPU_DEVICE}\"" --rm --ipc=host \
   -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
   --entrypoint bash sam3_ft \
   /workspace/run_pipeline_sam3.sh --yolo-data /workspace/yolo26_dataset/data.yaml "$@" \
-  2>&1 | tee "logs/${PIPELINE_NAME}_$(date -u +%Y%m%dT%H%M%SZ).log"
+  2>&1 | tee "logs/${PIPELINE_NAME}/terminal_$(date -u +%Y%m%dT%H%M%SZ).log"

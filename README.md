@@ -92,6 +92,7 @@ with your token (`export HUGGING_FACE_HUB_TOKEN=...`); the pipeline then runs wi
 GPU=1                                  # host GPU index
 PIPELINE_NAME="pipeline_final_v1"
 
+mkdir -p "logs/${PIPELINE_NAME}"     # the terminal log goes inside the pipeline folder
 docker run --gpus "\"device=${GPU}\"" -it --rm --ipc=host \
     --user "$(id -u):$(id -g)" \
     -e HF_HOME=/workspace/cache/huggingface -e HF_HUB_OFFLINE=1 -e HOME=/workspace/cache \
@@ -105,7 +106,7 @@ docker run --gpus "\"device=${GPU}\"" -it --rm --ipc=host \
     -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
     --entrypoint bash sam3_ft \
     /workspace/run_pipeline_sam3.sh --yolo-data /workspace/yolo26_dataset/data.yaml \
-    2>&1 | tee "logs/${PIPELINE_NAME}_$(date -u +%Y%m%dT%H%M%SZ).log"
+    2>&1 | tee "logs/${PIPELINE_NAME}/terminal_$(date -u +%Y%m%dT%H%M%SZ).log"
 ```
 
 * The YOLO26 dataset is mounted **read-only** (it is the source of truth); Phase 0 writes

@@ -39,13 +39,18 @@ COPY sam3 /workspace/sam3
 
 #  Instala as dependências do projeto
 # O --extra-index-url garante que o PyTorch venha com suporte a CUDA 12.1
+# Versões fixadas = as do ambiente em que o pipeline (sam3_seg/) foi validado
+# (determinismo bit-exato e retomada testados com estas versões).
 RUN pip install --upgrade pip && \
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 && \
-    pip install -e ".[train, notebooks]" && \
-    pip install optuna pandas pyyaml
+    pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121 && \
+    pip install -e ".[train, notebooks]" \
+        numpy==1.26.4 timm==1.0.30 hydra-core==1.3.7 omegaconf==2.3.1 pycocotools==2.0.11 \
+        fvcore==0.1.5.post20221221 iopath==0.1.10 huggingface_hub==1.32.0 scipy==1.17.1 \
+        opencv-python==4.11.0.86 pillow==12.3.0 einops==0.8.2 submitit==1.5.4 tensorboard==2.21.0 && \
+    pip install optuna==5.0.0 pandas==3.0.6 pyyaml==6.0.3
 
 # Copia o restante do código
 COPY . /workspace
 
-# Comando padrão
-CMD ["python", "sam3/train/train.py", "-c", "configs/sam3_ph2_docker.yaml", "--use-cluster", "0"]
+# Pipeline de 5 fases (ver run_pipeline_sam3.sh para os volumes necessários)
+CMD ["bash", "/workspace/run_pipeline_sam3.sh"]

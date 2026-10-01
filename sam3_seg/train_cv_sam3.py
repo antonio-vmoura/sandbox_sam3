@@ -88,7 +88,7 @@ YOLO_NAN_KEYS: tuple[str, ...] = (
 #: SAM 3 validation metrics reported per fold (from results.csv of the best epoch).
 VAL_KEYS: tuple[str, ...] = (
     "val_dsc", "val_jsi", "val_jsi_thr", "val_sensitivity", "val_specificity", "val_accuracy",
-    "val_pooled_dsc", "val_pooled_jsi", "val_n_empty_pred", "val_coco_ap_segm", "val_coco_ap_bbox",
+    "val_biou", "val_nsd", "val_pooled_dsc", "val_pooled_jsi", "val_n_empty_pred", "val_coco_ap_segm", "val_coco_ap_bbox",
 )
 
 

@@ -47,7 +47,7 @@ from protocol_trainer import union_masks
 from segmentation_metrics import pixel_scores
 
 #: Version of the evaluation method (part of the result cache keys).
-EVAL_VERSION: int = 1
+EVAL_VERSION: int = 2   # 2: + boundary metrics (BIoU, NSD)
 
 #: Instance score threshold of the merged binary mask (as in validation).
 SCORE_THRESHOLD: float = float(BASE_SETUP["score_threshold"])

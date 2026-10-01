@@ -18,12 +18,29 @@ the ground-truth and the predicted lesion masks, which is computed here:
   - sensitivity ``TP / (TP + FN)``, specificity ``TN / (TN + FP)``,
     pixel accuracy ``(TP + TN) / N``.
 
+* **Boundary scores** (contour adherence, as recommended by *Metrics
+  Reloaded*, Maier-Hein et al., Nat. Methods 2024; overlap scores are
+  insensitive to boundary errors on large lesions):
+
+  - ``BIoU`` — Boundary IoU (Cheng et al., CVPR 2021): the IoU of the two
+    *boundary bands*, i.e. the pixels of each mask within ``d`` pixels of its
+    own contour, ``d`` = :data:`BOUNDARY_DILATION_RATIO` × image diagonal
+    (2 %, the authors' setting; 18 px at 640 × 640).
+  - ``NSD`` — Normalised Surface Distance / surface Dice (Nikolov et al.,
+    2021): the fraction of contour pixels of both masks that lie within a
+    tolerance ``tau`` of the other mask's contour, ``tau`` =
+    :data:`NSD_TOLERANCE_RATIO` × image diagonal (1 %; 9 px at 640 × 640).
+
+  Contours are the 1-pixel inner boundaries of the masks; the image border
+  counts as background (zero padding), as in the reference BIoU code.
+
 Empty masks are handled explicitly, never by dividing by zero:
 
 * GT empty **and** prediction empty → DSC = JSI = 1 (perfect agreement); the
   row is flagged ``both_empty``. Sensitivity is undefined (NaN).
 * Exactly one of them empty → DSC = JSI = 0 (flagged ``empty_pred`` or
   ``empty_gt``). A missed lesion therefore counts as a full failure in the mean.
+  The boundary scores follow the same rule (1 if both empty, 0 if one is).
 
 Dataset-level aggregates (:func:`aggregate_scores`) report the per-image mean
 (macro, the primary figure), sample std (ddof=1), median, IQR, a seeded
@@ -43,9 +60,15 @@ import numpy as np
 #: ISIC 2018 Task 1 threshold for the thresholded Jaccard index.
 ISIC_JSI_THRESHOLD: float = 0.65
 
+#: Boundary-band width of the Boundary IoU, as a fraction of the image diagonal.
+BOUNDARY_DILATION_RATIO: float = 0.02
+
+#: Tolerance of the Normalised Surface Distance, as a fraction of the image diagonal.
+NSD_TOLERANCE_RATIO: float = 0.01
+
 #: Per-image score columns aggregated by :func:`aggregate_scores`.
 SCORE_KEYS: tuple[str, ...] = (
-    "dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy",
+    "dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy", "biou", "nsd",
 )
 
 
@@ -119,6 +142,37 @@ def _ratio(num: float, den: float) -> float:
     return num / den if den > 0 else math.nan
 
 
+def _distance_to_zero(mask: np.ndarray, border: int = 0) -> np.ndarray:
+    """Euclidean distance of every pixel to the nearest zero pixel (outside the image = ``border``)."""
+    padded = np.pad(mask.astype(np.uint8), 1, constant_values=border)
+    return cv2.distanceTransform(padded, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)[1:-1, 1:-1]
+
+
+def _contour(mask: np.ndarray) -> np.ndarray:
+    """1-pixel inner boundary of a binary mask (image border counts as background)."""
+    eroded = cv2.erode(np.pad(mask.astype(np.uint8), 1), np.ones((3, 3), np.uint8))[1:-1, 1:-1]
+    return mask & ~eroded.astype(bool)
+
+
+def boundary_scores(gt: np.ndarray, pred: np.ndarray) -> dict[str, float]:
+    """Boundary IoU and Normalised Surface Distance of one image (see module docstring)."""
+    if not gt.any() or not pred.any():
+        both = not gt.any() and not pred.any()
+        return {"biou": float(both), "nsd": float(both)}
+    diag = math.hypot(*gt.shape)
+    d = max(1.0, BOUNDARY_DILATION_RATIO * diag)
+    tau = max(1.0, NSD_TOLERANCE_RATIO * diag)
+    band_gt = gt & (_distance_to_zero(gt) <= d)
+    band_pred = pred & (_distance_to_zero(pred) <= d)
+    biou = np.count_nonzero(band_gt & band_pred) / np.count_nonzero(band_gt | band_pred)
+    c_gt, c_pred = _contour(gt), _contour(pred)
+    to_gt = _distance_to_zero(~c_gt, border=1)      # distance to the nearest ground-truth contour pixel
+    to_pred = _distance_to_zero(~c_pred, border=1)
+    hits = np.count_nonzero(to_pred[c_gt] <= tau) + np.count_nonzero(to_gt[c_pred] <= tau)
+    nsd = hits / (np.count_nonzero(c_gt) + np.count_nonzero(c_pred))
+    return {"biou": float(biou), "nsd": float(nsd)}
+
+
 def pixel_scores(gt: np.ndarray, pred: np.ndarray) -> dict[str, Any]:
     """Compute the confusion counts and pixel scores of one image.
 
@@ -154,6 +208,7 @@ def pixel_scores(gt: np.ndarray, pred: np.ndarray) -> dict[str, Any]:
         "sensitivity": _ratio(tp, tp + fn),
         "specificity": _ratio(tn, tn + fp),
         "accuracy": (tp + tn) / gt.size,
+        **boundary_scores(gt, pred),
         "empty_gt": empty_gt,
         "empty_pred": empty_pred,
         "both_empty": empty_gt and empty_pred,

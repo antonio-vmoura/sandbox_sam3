@@ -96,7 +96,11 @@ PROTOCOL_NOTES: list[str] = [
     f"Prompt '{BASE_SETUP['prompt']}', input {BASE_SETUP['resolution']} px, predicted mask = union of "
     f"instances with score >= {BASE_SETUP['score_threshold']}.",
 ]
-PIXEL_KEYS: tuple[str, ...] = ("dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy")
+PIXEL_KEYS: tuple[str, ...] = ("dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy", "biou", "nsd")
+
+#: Per-image scores compared between Baseline and Optimised (paired) in ``hpo_gain``:
+#: overlap (DSC, JSI) and boundary (Boundary IoU, NSD) metrics.
+PAIRED_KEYS: tuple[str, ...] = ("dsc", "jsi", "biou", "nsd")
 
 
 def parse_args() -> argparse.Namespace:
@@ -122,9 +126,31 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def _read_per_image(path: Path) -> dict[str, dict[str, float]]:
-    """Per-image DSC/JSI keyed by image path."""
+    """Per-image :data:`PAIRED_KEYS` scores keyed by image path (keys absent from older files are skipped)."""
     with path.open() as f:
-        return {r["image"]: {"dsc": float(r["dsc"]), "jsi": float(r["jsi"])} for r in csv.DictReader(f)}
+        return {r["image"]: {k: float(r[k]) for k in PAIRED_KEYS if r.get(k) not in (None, "")}
+                for r in csv.DictReader(f)}
+
+
+def run_training_time(results_csv: Path) -> tuple[int, float]:
+    """``(epochs, wall-clock seconds)`` of one training run, from its ``results.csv``.
+
+    Per-epoch durations (``time_s``) are summed; a cumulative clock (Ultralytics'
+    ``time``, which restarts from zero when a run is resumed) is integrated
+    segment by segment. Validation time per epoch is included.
+    """
+    with Path(results_csv).open() as f:
+        rows = [{k.strip(): v for k, v in r.items()} for r in csv.DictReader(f)]
+    if not rows:
+        return 0, 0.0
+    if "time_s" in rows[0]:
+        return len(rows), sum(float(r["time_s"]) for r in rows)
+    total, prev = 0.0, 0.0
+    for r in rows:
+        t = float(r["time"])
+        total += t - prev if t >= prev else t
+        prev = t
+    return len(rows), total
 
 
 class Report:
@@ -189,7 +215,7 @@ class Report:
                     self.add("phase2", "baseline", m, "cv", "fp32", k, v.get("mean"), v.get("std"), n=inst["n_folds"])
                 row = {"model": m, "n_folds": inst["n_folds"]}
                 for k in PIXEL_KEYS + ("pooled_dsc", "pooled_jsi"):
-                    v = inst["summary"][f"val_{k}"]
+                    v = inst["summary"].get(f"val_{k}") or {"mean": math.nan, "std": math.nan}
                     row[f"{k}_mean"], row[f"{k}_std"] = v["mean"], v["std"]
                     self.add("phase2", "baseline", m, "cv", "fp32", k, v["mean"], v["std"], n=inst["n_folds"])
                 pixel_rows.append(row)
@@ -230,7 +256,7 @@ class Report:
                     for k in INSTANCE_KEYS:
                         self.add("phase5", variant, m, "test", prec, k, inst[k], n=acc["n_images"])
                     for k in PIXEL_KEYS:
-                        s = pix[k]
+                        s = pix.get(k) or {}
                         for stat in ("mean", "std", "median", "ci95_low", "ci95_high"):
                             row[f"{k}_{stat}"] = s.get(stat)
                         self.add("phase5", variant, m, "test", prec, k, s.get("mean"), s.get("std"),
@@ -259,7 +285,9 @@ class Report:
             if len(common_imgs) != len(base) or len(base) != len(opt):
                 self.warnings.append(f"hpo_gain/{m}: baseline and optimised were scored on different images")
             row: dict[str, Any] = {"model": m, "n_images": len(common_imgs)}
-            for k in ("dsc", "jsi"):
+            for k in PAIRED_KEYS:
+                if not all(k in base[i] and k in opt[i] for i in common_imgs):
+                    continue   # metric absent from older per-image files
                 b = np.array([base[i][k] for i in common_imgs])
                 o = np.array([opt[i][k] for i in common_imgs])
                 d = o - b
@@ -284,6 +312,31 @@ class Report:
             self.add("hpo_gain", "optimized-baseline", m, "test", "fp32", "delta_map5095_m", dm)
             rows.append(row)
         self.tables["hpo_gain"] = rows
+
+    # ---- Training cost (all phases) ----------------------------------------
+    def training_cost(self) -> None:
+        """Epochs and wall-clock training time per phase and model (from every results.csv)."""
+        rows = []
+        for m in self.models:
+            groups = {
+                "phase1_baseline": [self.paths.phase1_dir / self.paths.phase1_run_name(m) / "results.csv"],
+                "phase2_cv_baseline": sorted((self.paths.cv_model_dir(m, "baseline") / "runs").glob("fold_*/results.csv")),
+                "phase3_hpo": sorted(self.paths.phase3_tune_dir(m).glob("**/results.csv")),
+                "phase4_optimized": [self.paths.phase4_dir / self.paths.phase4_run_name(m) / "results.csv"],
+            }
+            for phase, files in groups.items():
+                files = [f for f in files if f.exists()]
+                if not files:
+                    continue
+                runs = [run_training_time(f) for f in files]
+                epochs, secs = sum(e for e, _ in runs), sum(t for _, t in runs)
+                row = {"phase": phase, "model": m, "runs": len(runs), "epochs": epochs,
+                       "train_hours": secs / 3600, "sec_per_epoch": secs / epochs if epochs else math.nan}
+                rows.append(row)
+                for k in ("runs", "epochs", "train_hours", "sec_per_epoch"):
+                    self.add(phase, "all" if phase != "phase4_optimized" else "optimized", m, "train", "fp32",
+                             k, row[k])
+        self.tables["training_cost"] = rows
 
     # ---- Phase 5b (efficiency) ---------------------------------------------
     def efficiency(self) -> None:
@@ -346,9 +399,10 @@ def main() -> int:
     rep.test_accuracy()
     rep.hpo_gain()
     rep.efficiency()
+    rep.training_cost()
 
     out = paths.summary_dir
-    for name in ("test_accuracy", "efficiency", "hpo_gain", "phase2_cv_pixel"):
+    for name in ("test_accuracy", "efficiency", "hpo_gain", "phase2_cv_pixel", "training_cost"):
         _write_csv(out / f"{name}.csv", rep.tables.get(name, []))
     _write_csv(out / "final_results.csv", rep.tidy)
     atomic_write_json(out / "final_results.json", {

@@ -1,20 +1,20 @@
-# Master methodology for the article — YOLO26-seg vs. U-Net vs. SAM 3 on ISIC 2018 Task 1
+# Methodology notes — YOLO26-seg vs. U-Net vs. SAM 3 on ISIC 2018 Task 1
 
-> **What this document is.** A single, citable description of how the three experimental arms
-> (`sandbox_yolo26`, `sandbox_unet`, `sandbox_sam3`) were built, trained, evaluated and compared, written so that the
-> Methods, Results and Limitations sections of the thesis/article can be drafted directly from it.
+> **What these notes are.** Working lab notes describing how the three experimental arms
+> (`sandbox_yolo26`, `sandbox_unet`, `sandbox_sam3`) were built, trained, evaluated and compared — the protocol
+> reference from which the Methods, Results and Limitations sections of the thesis are drafted.
 >
 > **Sources.** (1) The code — the authoritative description of the final protocol (`common.py`, the phase scripts
 > and `segmentation_metrics.py` of each repository); (2) the three READMEs and the commit history, which record the
 > *why* of each protocol decision with the numbers observed in the first full runs; (3) the authors' three per-arm
-> notes (`METHODOLOGY_NOTES_FOR_ARTICLE.md` of YOLO26, U-Net and SAM 3), cross-checked line by line against the code.
+> lab notes of YOLO26, U-Net and SAM 3 (kept locally, not versioned), cross-checked line by line against the code.
 > Where a note describes an earlier state of the protocol (e.g. the Roboflow export, early stopping with patience 25,
 > HPO micro-batch 32), this document follows the **current code** and lists every superseded statement in
 > [Appendix A](#appendix-a--statements-in-the-per-arm-notes-that-the-final-protocol-supersedes), so the notes and
 > this document never silently disagree.
 >
 > **Placeholders.** Everything written as **[RESULT]** or **[…]** must be filled in after the final run (most values
-> come from `article_outputs/`, produced by `Article_Figures_and_Tables.ipynb`). Numbers quoted from earlier or
+> come from `analysis_outputs/`, produced by `04_cross_architecture_results.ipynb`). Numbers quoted from earlier or
 > preliminary runs are labelled as such.
 
 ---
@@ -146,7 +146,7 @@ The final protocol is the third iteration of the data handling; earlier numbers 
 
 ### 3.1 The phases
 
-| Phase | Purpose | Data touched | Output used in the article |
+| Phase | Purpose | Data touched | Output used in the thesis |
 |---|---|---|---|
 | **0 — Dataset** | build and verify the shared dataset (§ 2) | raw release | dataset description |
 | **1 — Baseline** | train with the **base setup + default hyperparameters** | train (fit), val (checkpoint selection) | Baseline model (`best.pt`) |
@@ -219,7 +219,8 @@ the same size as — or larger than — the real improvements late in training, 
 by chance while the model is still improving. *(Illustration only: if per-image JSI has a standard deviation σ, the
 standard error of a 100-image mean is σ/10; with σ = 0.15 that is 0.015, against ≈ 0.0065 on a 539-image CV fold.)*
 
-**Evidence from the first full runs (`logs/pipeline_final_v1`, on the Roboflow export of § 2.5, before the change):**
+**Evidence from the first full runs (on the Roboflow export of § 2.5, before the change; their outputs were moved
+aside by `--force` and are not part of the final `logs/pipeline_final_v1` results):**
 
 | Arm | Observation with early stopping (patience 25; HPO 10) | Consequence |
 |---|---|---|
@@ -589,7 +590,7 @@ weeks on one GPU (Phases 2 and 3 are independent and can run in parallel on two 
   mechanism itself is exact. **In the warn-only mode used by the study**, the remaining nondeterministic attention
   backward makes two identical runs differ by **up to 6.8 × 10⁻⁵ in the weights after 3 epochs** and in the 5th decimal of
   the validation JSI. Repeated or resumed SAM 3 runs are therefore **statistically equivalent, not bit-identical**; the
-  article must not claim bit-exact reproducibility for SAM 3.
+  thesis must not claim bit-exact reproducibility for SAM 3.
 * **Run lifecycle and isolation.** Each training run is a separate process (`run_training.py`), so a CUDA error or OOM
   cannot take down the HPO driver; `run_state.json` records status, protocol and protocol hash, data fingerprints and
   events (atomic writes); a completed run is skipped, a changed protocol or dataset is refused, an exclusive POSIX lock
@@ -664,13 +665,13 @@ $$
 | Sensitivity, specificity, accuracy | TP/(TP+FN), TN/(TN+FP), (TP+TN)/N | |
 | **Boundary IoU** | IoU of the boundary bands (pixels within *d* of each mask's own contour), *d* = 2 % of the image diagonal (≈ 26 px at 1024 × 768) | Cheng et al., CVPR 2021 |
 | **NSD** (surface Dice) | fraction of both contours within τ of the other contour, τ = 1 % of the diagonal (≈ 13 px) | Nikolov et al., 2021; recommended by Metrics Reloaded |
-| **HD95** | max of the two directed 95th percentiles of contour-to-contour distances, **pixels** at dataset resolution (lower is better) | MONAI / DeepMind `surface-distance` convention; added in this audit |
+| **HD95** | max of the two directed 95th percentiles of contour-to-contour distances, **pixels** at dataset resolution (lower is better; image sizes vary, so report the median next to the mean — the diagonal penalty of a missed lesion dominates the mean) | MONAI / DeepMind `surface-distance` convention; added in this audit |
 
 * **Ground truth** = the official mask (`masks/<id>.png`; for SAM 3 its lossless RLE). **Prediction**: YOLO26 — each
   test image alone (batch 1), `conf = 0.25`, instance masks at the original resolution (`retina_masks=True`), binarised
   at 0.5 and merged (union); U-Net — bilinear upsampling of the probability map, threshold 0.5; SAM 3 — § 6.3.
-* **Empty masks:** an empty prediction with a non-empty ground truth scores DSC = JSI = 0 (boundary scores 0, HD95 =
-  image diagonal) and is **included** in all averages — missed lesions count as complete failures (Metrics Reloaded:
+* **Empty masks:** an empty prediction with a non-empty ground truth (or vice versa) scores DSC = JSI = 0 (boundary scores 0,
+  HD95 = image diagonal) and is **included** in all averages — missed lesions count as complete failures (Metrics Reloaded:
   penalise, never drop). If both were empty: overlap and boundary scores 1, HD95 0; sensitivity is then undefined and
   excluded from its mean. The number of empty predictions is reported ("Missed" in Table 1).
 * Contours are 1-pixel inner boundaries; the image border counts as background. HD95 was verified against a
@@ -729,7 +730,7 @@ answered by measured latency, throughput and memory of the deployed models.
 | `end_to_end_dataset` | the same pipeline once on each of the **first 100 test images sorted by ISIC ID** (the same images for every model), after one untimed pass (cuDNN autotuning of every input shape) — input-dependent spread (image size, number of instances) |
 | SAM 3 only | `forward_cached_text`: forward with the prompt's text features precomputed (fixed-prompt deployment) |
 | Statistics | mean, SD, **median** (typical latency), P90, **P95** (the worst-case behaviour relevant for real time), P99, min, max; **FPS** = 1000 / mean latency (1000 / median also reported); raw per-iteration latencies kept for distribution plots |
-| **Peak VRAM** | (a) **allocator peak** — `torch.cuda.max_memory_allocated` during the timed loops, counters reset *after* warm-up (with `cudnn.benchmark` the warm-up peak is dominated by cuDNN's algorithm-search workspaces — e.g. ≈ 2.2 GB vs. ≈ 74 MB at steady state for YOLO26n-seg FP32 in a test — and is recorded separately) = the model's own footprint; (b) **process peak** — device memory held by the benchmark process as reported by the driver (`nvidia-smi` delta: CUDA context, kernels and allocator cache included) = what a deployment GPU must provide; plus the CUDA-context size and the VRAM of the weights alone |
+| **Peak VRAM** | (a) **allocator peak** — `torch.cuda.max_memory_allocated` during the timed loops, counters reset *after* warm-up (with `cudnn.benchmark` the warm-up peak is dominated by cuDNN's algorithm-search workspaces — e.g. ≈ 2.2 GB vs. ≈ 74 MB at steady state for YOLO26n-seg FP32 in a test — and is recorded separately) = the model's own footprint; (b) **process footprint** (`vram_process_peak_mb`) — device memory held by the benchmark process as reported by the driver (`nvidia-smi` delta: CUDA context, kernels and allocator cache included), sampled after each timed scope and maximised over the samples — an approximation of what a deployment GPU must provide, not a continuously tracked peak, and only meaningful on an otherwise idle GPU (the delta includes other processes); plus the CUDA-context size and the VRAM of the weights alone |
 | Host RAM | resident set size after model loading and after the benchmark, and its peak over the process lifetime (`getrusage`) |
 | Units | all memory and size figures in MiB (2²⁰ bytes) |
 | Contention | GPU utilisation, memory in use, SM clock and temperature sampled with `nvidia-smi` before and after each run; utilisation by other processes > 5 % flags the run `contended`; only uncontended measurements are reported (re-run on an idle GPU) |
@@ -739,7 +740,7 @@ answered by measured latency, throughput and memory of the deployed models.
 Baseline and Optimized share the architecture and therefore the cost; their efficiency figures coincide within noise
 and are reported for the deployed (Optimized) models.
 
-**Real-time criterion used in the article:** a model is real-time at *F* FPS if its **P95 end-to-end latency over the
+**Real-time criterion used in the thesis:** a model is real-time at *F* FPS if its **P95 end-to-end latency over the
 100 distinct test images** is ≤ 1000 / *F* ms (default *F* = 30 → 33.3 ms), at batch 1 on the reported GPU. Using P95
 rather than the mean guarantees the frame budget for 95 % of frames.
 
@@ -752,8 +753,8 @@ benchmark.
 
 ## 9. Cross-architecture aggregation (root notebook)
 
-`Article_Figures_and_Tables.ipynb` (driver) and `article_aggregator.py` (logic, also runnable headless) read only the
-Phase 5 summaries and per-image files of the three pipelines and write `article_outputs/`:
+`04_cross_architecture_results.ipynb` (driver) and `results_aggregator.py` (logic, also runnable headless) read only the
+Phase 5 summaries and per-image files of the three pipelines and write `analysis_outputs/`:
 
 * **Tables (LaTeX `booktabs` + CSV):** 1 accuracy with 95 % CI (best per column in bold); 2 efficiency with the
   real-time criterion; 3 HPO effect; 4 FP16 vs. FP32; 5 training cost per phase; 6 CV vs. test; 7 pairwise paired tests
@@ -868,7 +869,7 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 
 ## 13. Artefact map: which file feeds which table or figure
 
-| Article element | Produced by | Underlying files |
+| Thesis element | Produced by | Underlying files |
 |---|---|---|
 | Table 1, Fig. 1, 3, 5 | root notebook | `<repo>/logs/<name>/summary/test_accuracy.csv`, `phase5_test/per_image/*.csv` |
 | Table 2, Fig. 1, 2, 6 | root notebook | `summary/efficiency.csv`, `phase5_test/efficiency/*.json` |
@@ -877,8 +878,8 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 | Table 5, Fig. 2a | root notebook | `summary/training_cost.csv` (from every `results.csv`) |
 | Table 6 | root notebook | `summary/phase2_cv_pixel.csv` |
 | Table 7, Fig. 4 | root notebook | per-image CSVs (paired by ISIC ID) |
-| Qualitative figure | `notebooks/01_Segmentation_Visualizer.ipynb` (each repo) | `phase5_test/masks/<variant>_<model>/`, dataset images and official masks |
-| Per-architecture figures | `notebooks/02_Metrics_and_Efficiency_Analysis.ipynb` (each repo) | `summary/*` |
+| Qualitative figure | `analysis/02_segmentation_visualizer.ipynb` (each repo) | `phase5_test/masks/<variant>_<model>/`, dataset images and official masks |
+| Per-architecture figures | `analysis/03_metrics_and_efficiency.ipynb` (each repo) | `summary/*` |
 | SAM 3 compute breakdown | notebook 02 of `sandbox_sam3` (Figure 8) | `phase5_test/efficiency/*.json` → `gflops_by_component`, `gflops_by_op` |
 | Disclosures | `summary/final_results.json` → `warnings`, `protocol_notes`; `run_state.json`; `hpo_state.json` | printed by the root notebook |
 
@@ -890,12 +891,12 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 
 | Committee demand | Where it is met |
 |---|---|
-| Measured real-time / on-device evidence, not only GFLOPs/params | Phase 5b: batch-1 median and P95 latency, FPS, allocator and process peak VRAM, end-to-end over 100 distinct images; real-time criterion on P95 (Table 2, Fig. 2, 6) |
+| Measured real-time / on-device evidence, not only GFLOPs/params | Phase 5b: batch-1 median and P95 latency, FPS, allocator and process VRAM footprint, end-to-end over 100 distinct images; real-time criterion on P95 (Table 2, Fig. 2, 6) |
 | Metrics Reloaded: boundary metric | Boundary IoU, NSD, HD95 in every test/CV summary (Table 1, Fig. 5) |
 | 95 % CIs | seeded bootstrap CI for every per-image metric; paired bootstrap CI for every difference |
 | Paired statistical comparisons | Wilcoxon + bootstrap within arms (HPO) and across architectures (Holm, Friedman, effect sizes) |
 | Standardised visual artefacts | notebooks 01/02 identical across repositories (shared cells byte-identical) |
-| Unified article artefacts | root notebook + aggregator → LaTeX tables and figures |
+| Unified analysis artefacts | root notebook + aggregator → LaTeX tables and figures |
 
 ### 14.2 Points to verify or disclose before submission (merged from the three per-arm notes)
 
@@ -934,7 +935,7 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 * `build_final_report.py`: HD95 in the accuracy and HPO-gain tables (direction-aware improvement counts); new
   efficiency columns (`e2e_dataset_*`, `vram_process_peak_mb`, `vram_cuda_context_mb`, `gflops_640`, `input_px`).
 * Notebooks 01/02 standardised (ground-truth column, standard figures A–C with DSC/JSI/BIoU and HD95, real-time table,
-  readable log axes, corrected stale notes); root notebook + aggregator added (`article/` in each repository).
+  readable log axes, corrected stale notes); root notebook + aggregator added (`analysis/` in each repository).
 * This document: cross-checked against the three per-arm notes (2026-10-02); their missing details merged, superseded
   statements listed in Appendix A.
 

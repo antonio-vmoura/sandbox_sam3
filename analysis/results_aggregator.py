@@ -1,7 +1,7 @@
-"""Master article aggregator — YOLO26-seg vs. U-Net vs. SAM 3 on ISIC 2018 Task 1.
+"""Results aggregator — YOLO26-seg vs. U-Net vs. SAM 3 on ISIC 2018 Task 1.
 
 Reads **only** the Phase 5 outputs of the three 5-phase pipelines and writes the
-cross-architecture tables (LaTeX + CSV), statistics and figures of the article.
+cross-architecture tables (LaTeX + CSV), statistics and figures of the thesis.
 No GPU, no training, no re-evaluation.
 
 Inputs, per pipeline (``<repo>/logs/<pipeline-name>/``, written by the
@@ -19,7 +19,7 @@ The pipelines are found automatically in the folder that contains the three
 repositories (``sandbox_yolo26``, ``sandbox_unet``, ``sandbox_sam3``; the
 match is case-insensitive) — the current directory, its parent or its
 grandparent, so this file works from that root folder or from a copy in
-``<repo>/article/``. Override with ``$YOLO26_PIPELINE_DIR``,
+``<repo>/analysis/``. Override with ``$YOLO26_PIPELINE_DIR``,
 ``$UNET_PIPELINE_DIR``, ``$SAM3_PIPELINE_DIR`` (each pointing at a pipeline
 folder) or ``--root``. A missing pipeline is skipped with a warning.
 
@@ -34,8 +34,8 @@ by ISIC ID):
 
 Usage::
 
-    python article_aggregator.py                         # auto-discovery, outputs in <root>/article_outputs
-    python article_aggregator.py --root ~/projects --pipeline-name pipeline_final_v1 --variant optimized
+    python results_aggregator.py                         # auto-discovery, outputs in <root>/analysis_outputs
+    python results_aggregator.py --root ~/projects --pipeline-name pipeline_final_v1 --variant optimized
 
 Requires numpy, pandas, scipy and matplotlib (no GPU, no deep-learning stack).
 """
@@ -602,7 +602,7 @@ def fig_accuracy_vs_efficiency(sel: pd.DataFrame, metrics=("dsc", "jsi"), save=N
                                                         label="Pareto front")])
     fig.tight_layout(rect=(0, 0.05, 1, 1))
     if save:
-        save(fig, "article_fig1_accuracy_vs_efficiency")
+        save(fig, "fig1_accuracy_vs_efficiency")
     return fig
 
 
@@ -666,7 +666,7 @@ def fig_training_inference_time(sel: pd.DataFrame, train: pd.DataFrame, realtime
                         for a in sel.arch.unique()], loc="upper center", ncol=3, bbox_to_anchor=(0.5, 1.0))
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     if save:
-        save(fig, "article_fig2_training_inference_time")
+        save(fig, "fig2_training_inference_time")
     return fig
 
 
@@ -702,7 +702,7 @@ def fig_per_image_distributions(sel: pd.DataFrame, per_image: dict[str, pd.DataF
     axes[0, 0].set_title("Per-image distribution (◆ mean)")
     fig.tight_layout()
     if save:
-        save(fig, "article_fig3_per_image_distributions")
+        save(fig, "fig3_per_image_distributions")
     return fig
 
 
@@ -746,7 +746,7 @@ def fig_pairwise_matrix(tests: pd.DataFrame, systems: list[str], metric: str = "
     fig.text(0.01, 0.005, "Wilcoxon signed-rank, Holm-adjusted: * p<.05  ** p<.01  *** p<.001", fontsize=7, color=INK_2)
     fig.tight_layout(rect=(0, 0.03, 1, 1))
     if save:
-        save(fig, f"article_fig4_pairwise_{metric}")
+        save(fig, f"fig4_pairwise_{metric}")
     return fig
 
 
@@ -773,7 +773,7 @@ def fig_boundary_metrics(sel: pd.DataFrame, save=None):
     axes[0, 0].set_xlabel("per-image mean (95 % CI)")
     fig.tight_layout()
     if save:
-        save(fig, "article_fig5_boundary_metrics")
+        save(fig, "fig5_boundary_metrics")
     return fig
 
 
@@ -803,7 +803,7 @@ def fig_memory(sel: pd.DataFrame, save=None):
               loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2)
     fig.tight_layout()
     if save:
-        save(fig, "article_fig6_memory")
+        save(fig, "fig6_memory")
     return fig
 
 
@@ -811,7 +811,7 @@ def fig_memory(sel: pd.DataFrame, save=None):
 # Orchestration
 # ---------------------------------------------------------------------------
 @dataclass
-class Article:
+class ResultsBundle:
     root: Path
     out: Path
     variant: str
@@ -835,11 +835,11 @@ class Article:
 
 def build(root: Path | None = None, pipeline_name: str = "pipeline_final_v1", variant: str = "optimized",
           precision: str = "fp32", realtime_fps: float = 30.0, out: Path | None = None, n_boot: int = 2000,
-          seed: int = 0) -> Article:
+          seed: int = 0) -> ResultsBundle:
     """Load the three pipelines and compute every table and statistic (no figures)."""
     warnings: list[str] = []
     root = discover_root(root)
-    out = Path(out) if out else root / "article_outputs"
+    out = Path(out) if out else root / "analysis_outputs"
     pipes = find_pipelines(root, pipeline_name, warnings)
     systems = system_frame(pipes)
     if systems.empty:
@@ -862,7 +862,7 @@ def build(root: Path | None = None, pipeline_name: str = "pipeline_final_v1", va
     tables["precision"] = precision_table(systems, variant)
     tables["training"] = training_table(pipes)
     tables["cv_vs_test"] = cv_vs_test_table(pipes, select(systems, "baseline", "fp32"))
-    return Article(root, out, variant, precision, realtime_fps, pipes, systems, sel, per_image, tests, fried,
+    return ResultsBundle(root, out, variant, precision, realtime_fps, pipes, systems, sel, per_image, tests, fried,
                    tables, warnings)
 
 
@@ -878,7 +878,7 @@ def pairwise_table(tests: pd.DataFrame, metric: str) -> pd.DataFrame:
     }).reset_index(drop=True)
 
 
-def write_tables(art: Article) -> list[Path]:
+def write_tables(art: ResultsBundle) -> list[Path]:
     """Write every table as CSV (numeric where available) and booktabs LaTeX."""
     tdir = art.out / "tables"
     tdir.mkdir(parents=True, exist_ok=True)
@@ -891,33 +891,33 @@ def write_tables(art: Article) -> list[Path]:
         if lab in acc:
             bold[lab] = best_rows(accn[f"{k}_mean"], k in LOWER_IS_BETTER)
     specs = [
-        ("article_table1_accuracy", acc, f"Test-set segmentation accuracy ({v} models, {p}, n = 1,000 ISIC 2018 Task 1 "
+        ("table1_accuracy", acc, f"Test-set segmentation accuracy ({v} models, {p}, n = 1,000 ISIC 2018 Task 1 "
          "test images): per-image mean with seeded bootstrap 95 % CI. HD95 in pixels at dataset resolution "
          "(lower is better). Missed = images with an empty prediction (scored 0, never skipped).", bold, True),
     ]
     eff, effn = art.tables["efficiency"], art.tables["efficiency_numeric"]
     bold_e = {lab: best_rows(effn[c], c in LOWER_BETTER_EFF) for c, lab, _ in EFF_COLS if lab in eff and c in effn
               and c != "input_px"}
-    specs.append(("article_table2_efficiency", eff, f"Batch-1 inference efficiency on one GPU ({v} models, {p}). "
+    specs.append(("table2_efficiency", eff, f"Batch-1 inference efficiency on one GPU ({v} models, {p}). "
                   "Fwd = network forward pass (CUDA events); E2E = image in host memory → binary mask at dataset "
                   "resolution in host memory; E2E P95 over 100 distinct test images. FPS = 1000 / mean latency. "
                   "VRAM alloc. = PyTorch allocator peak; VRAM process = device memory of the process incl. CUDA "
                   "context. GFLOPs at each model's native input (YOLO26/U-Net: thop; SAM 3: FlopCounterMode, "
                   f"attention products included). Real-time = E2E P95 ≤ {1000 / art.realtime_fps:.1f} ms.", bold_e, True))
-    for name, df, cap in (("article_table3_hpo_gain", art.tables["hpo_gain"],
+    for name, df, cap in (("table3_hpo_gain", art.tables["hpo_gain"],
                            "Effect of hyperparameter optimisation on the test set (Optimized − Baseline, FP32): mean "
                            "paired difference with bootstrap 95 % CI and two-sided Wilcoxon signed-rank p."),
-                          ("article_table4_fp16", art.tables["precision"].round(4),
+                          ("table4_fp16", art.tables["precision"].round(4),
                            "Half-precision deployment: accuracy cost and speed-up of FP16 vs. FP32 (batch 1)."),
-                          ("article_table5_training_cost", art.tables["training"].drop(columns="arch", errors="ignore").round(2),
+                          ("table5_training_cost", art.tables["training"].drop(columns="arch", errors="ignore").round(2),
                            "Training cost per phase (wall-clock GPU hours, validation included)."),
-                          ("article_table6_cv_vs_test", art.tables["cv_vs_test"],
+                          ("table6_cv_vs_test", art.tables["cv_vs_test"],
                            "Phase 2 cross-validation (Baseline protocol, 5 folds, mean ± SD) vs. Baseline test score.")):
         if len(df):
             specs.append((name, df, cap, {}, True))
     pt = pairwise_table(art.tests, "dsc") if len(art.tests) else pd.DataFrame()
     if len(pt):
-        specs.append(("article_table7_pairwise_dsc", pt, "Paired cross-architecture comparison of per-image DSC "
+        specs.append(("table7_pairwise_dsc", pt, "Paired cross-architecture comparison of per-image DSC "
                       f"({v}, {p}): mean difference A − B with bootstrap 95 % CI, matched-pairs rank-biserial r, "
                       "two-sided Wilcoxon signed-rank p and Holm-adjusted p (all pairs).", {}, True))
     for name, df, cap, b, resize in specs:
@@ -936,7 +936,7 @@ def write_tables(art: Article) -> list[Path]:
     return written
 
 
-def make_figures(art: Article, show: bool = False) -> list[str]:
+def make_figures(art: ResultsBundle, show: bool = False) -> list[str]:
     import matplotlib.pyplot as plt
 
     setup_style()
@@ -958,7 +958,7 @@ def make_figures(art: Article, show: bool = False) -> list[str]:
     return sorted(p.name for p in (art.out / "figures").glob("*.pdf"))
 
 
-def key_numbers(art: Article) -> list[str]:
+def key_numbers(art: ResultsBundle) -> list[str]:
     """Sentences with the headline numbers for the Results section."""
     s, lines = art.sel, []
     if s.empty:
@@ -997,13 +997,13 @@ def key_numbers(art: Article) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Cross-architecture article tables and figures (YOLO26 / U-Net / SAM 3).")
+    ap = argparse.ArgumentParser(description="Cross-architecture result tables and figures (YOLO26 / U-Net / SAM 3).")
     ap.add_argument("--root", type=Path, default=None, help="Folder containing the three sandbox_* repositories.")
     ap.add_argument("--pipeline-name", default="pipeline_final_v1")
     ap.add_argument("--variant", default="optimized", choices=("baseline", "optimized"))
     ap.add_argument("--precision", default="fp32", choices=("fp32", "fp16"))
     ap.add_argument("--realtime-fps", type=float, default=30.0)
-    ap.add_argument("--out", type=Path, default=None, help="Output folder (default: <root>/article_outputs).")
+    ap.add_argument("--out", type=Path, default=None, help="Output folder (default: <root>/analysis_outputs).")
     ap.add_argument("--n-boot", type=int, default=2000)
     args = ap.parse_args(argv)
     art = build(args.root, args.pipeline_name, args.variant, args.precision, args.realtime_fps, args.out, args.n_boot)

@@ -23,8 +23,10 @@ Outputs (``<project>/summary/``):
 
 * ``test_accuracy.csv`` — one row per variant × model × precision (instance
   metrics, DSC/JSI mean ± std, median, 95 % CI, pooled, empty predictions).
-* ``efficiency.csv`` — one row per variant × model × precision (forward and
-  end-to-end latency median/P95/P99, FPS, VRAM, RAM, size, params, GFLOPs).
+* ``efficiency.csv`` — one row per variant × model × precision (forward,
+  end-to-end and end-to-end-over-distinct-test-images latency median/P95/P99,
+  FPS, VRAM (allocator peak and driver-level process peak incl. the CUDA
+  context), RAM, size, params, GFLOPs, native input size).
 * ``hpo_gain.csv`` — Optimised − Baseline on the test set per model (FP32):
   ΔDSC, ΔJSI, ΔmAP50-95(M), the paired bootstrap 95 % CI of ΔDSC/ΔJSI and the
   two-sided Wilcoxon signed-rank p-value on per-image DSC/JSI.
@@ -61,11 +63,13 @@ from common import (
     SEED,
     TRAIN_EPOCHS,
     TRAIN_PATIENCE,
+    RESOLUTION,
     PipelinePaths,
     atomic_write_json,
     read_json,
     utc_now_iso,
 )
+from segmentation_metrics import LOWER_IS_BETTER
 from train_cv_sam3 import VAL_KEYS
 from training import RUN_STATE_FILE
 
@@ -96,11 +100,11 @@ PROTOCOL_NOTES: list[str] = [
     f"Prompt '{BASE_SETUP['prompt']}', input {BASE_SETUP['resolution']} px, predicted mask = union of "
     f"instances with score >= {BASE_SETUP['score_threshold']}.",
 ]
-PIXEL_KEYS: tuple[str, ...] = ("dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy", "biou", "nsd")
+PIXEL_KEYS: tuple[str, ...] = ("dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy", "biou", "nsd", "hd95")
 
 #: Per-image scores compared between Baseline and Optimised (paired) in ``hpo_gain``:
-#: overlap (DSC, JSI) and boundary (Boundary IoU, NSD) metrics.
-PAIRED_KEYS: tuple[str, ...] = ("dsc", "jsi", "biou", "nsd")
+#: overlap (DSC, JSI) and boundary (Boundary IoU, NSD, HD95 — lower is better) metrics.
+PAIRED_KEYS: tuple[str, ...] = ("dsc", "jsi", "biou", "nsd", "hd95")
 
 
 def parse_args() -> argparse.Namespace:
@@ -301,7 +305,8 @@ class Report:
                     f"delta_{k}_ci95_low": float(np.quantile(boot, 0.025)),
                     f"delta_{k}_ci95_high": float(np.quantile(boot, 0.975)),
                     f"wilcoxon_p_{k}": p,
-                    f"n_improved_{k}": int((d > 0).sum()), f"n_worse_{k}": int((d < 0).sum()),
+                    f"n_improved_{k}": int(((d < 0) if k in LOWER_IS_BETTER else (d > 0)).sum()),
+                    f"n_worse_{k}": int(((d > 0) if k in LOWER_IS_BETTER else (d < 0)).sum()),
                 })
                 self.add("hpo_gain", "optimized-baseline", m, "test", "fp32", f"delta_{k}",
                          row[f"delta_{k}"], None, row[f"delta_{k}_ci95_low"], row[f"delta_{k}_ci95_high"],
@@ -359,6 +364,8 @@ class Report:
                         **{f"fwd_{k}": fw[k] for k in ("mean_ms", "std_ms", "median_ms", "p90_ms", "p95_ms", "p99_ms", "fps", "fps_median")},
                         **{f"fwd_cached_text_{k}": fc[k] for k in ("mean_ms", "median_ms", "p95_ms", "fps")},
                         **{f"e2e_{k}": ee[k] for k in ("mean_ms", "median_ms", "p95_ms", "p99_ms", "fps", "fps_median")},
+                        **{f"e2e_dataset_{k}": (e.get("end_to_end_dataset") or {}).get(k)
+                           for k in ("n", "mean_ms", "median_ms", "p95_ms", "p99_ms", "fps")},
                         "vram_weights_mb": mem["vram_weights_mb"],
                         "vram_peak_allocated_mb": mem["vram_peak_allocated_mb"],
                         "vram_peak_reserved_mb": mem["vram_peak_reserved_mb"],
@@ -368,7 +375,11 @@ class Report:
                         "size_mb_disk": mdl["size_mb_disk"],
                         "size_mb_fp32_theoretical": mdl["size_mb_fp32_theoretical"],
                         "size_mb_fp16_theoretical": mdl["size_mb_fp16_theoretical"],
+                        "vram_peak_allocated_e2e_dataset_mb": mem.get("vram_peak_allocated_e2e_dataset_mb"),
+                        "vram_cuda_context_mb": mem.get("vram_cuda_context_mb"),
+                        "vram_process_peak_mb": mem.get("vram_process_peak_mb"),
                         "params": mdl["params"], "params_fused": mdl["params_fused"], "gflops": mdl["gflops"],
+                        "gflops_640": mdl.get("gflops_640"), "input_px": RESOLUTION,
                         "params_without_text": mdl["params_without_text"],
                         **{f"params_{k}": v for k, v in mdl["params_by_component"].items()},
                         "gflops_without_text": mdl["gflops_without_text"],

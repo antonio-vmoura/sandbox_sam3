@@ -38,6 +38,7 @@ from __future__ import annotations
 import csv
 import gc
 import json
+import logging
 import math
 import os
 import random
@@ -102,18 +103,60 @@ def pixel_metrics_from_dump(pred_file: Path, gt_file: Path, score_threshold: flo
                val_n_empty_pred=agg["n_empty_pred"])
     return out
 
+def disable_act_ckpt(model) -> int:
+    """Turn off activation checkpointing in the two large backbones; return how many switches.
+
+    SAM 3's detector encoder and decoder *assert* activation checkpointing in
+    training mode (``encoder.py`` / ``decoder.py``), so the small detector
+    modules keep the official setting; the vision trunk (ViT, 454 M params) and
+    the text encoder (354 M) — where nearly all the recompute cost is — run
+    without it. Numerically identical to the official setting.
+    """
+    n = 0
+    for root in (model.backbone.vision_backbone, model.backbone.language_backbone):
+        for mod in root.modules():
+            for attr in ("use_act_checkpoint", "grad_checkpointing"):
+                if isinstance(getattr(mod, attr, None), bool) and getattr(mod, attr):
+                    setattr(mod, attr, False)
+                    n += 1
+    return n
+
 
 class ProtocolTrainer(Trainer):
     """Official SAM 3 trainer + early stopping, pixel-metric model selection, exact-state resume."""
 
     def __init__(self, *args, patience: int, score_threshold: float, val_ann_file: str,
-                 protocol_hash: str = "", **kwargs) -> None:
+                 protocol_hash: str = "", freeze_text: bool = False, act_ckpt: bool = True,
+                 **kwargs) -> None:
         self.patience = patience
         self.score_threshold = score_threshold
         self.val_ann_file = val_ann_file
         self.protocol_hash = protocol_hash
+        self.freeze_text = freeze_text
+        self.act_ckpt = act_ckpt
         self.proto = {"best_value": -math.inf, "best_epoch": 0, "bad_epochs": 0, "history": [], "final": False}
         super().__init__(*args, **kwargs)   # ends with load_checkpoint() → our RNG restore
+
+    # ---- model setup ---------------------------------------------------------------
+    def _setup_components(self):
+        """Official setup, then the throughput settings of the base setup.
+
+        Runs before the optimiser and the DDP wrapper are built, so DDP never
+        registers the frozen parameters and AdamW keeps no state for them
+        (their ``.grad`` stays ``None``: no update, no weight decay).
+        """
+        super()._setup_components()
+        if self.freeze_text:
+            # The prompt is the constant 'skin lesion': the text encoder (354 M
+            # params, no dropout) sees one input, so fine-tuning it buys nothing.
+            self.model.backbone.language_backbone.requires_grad_(False)
+        if not self.act_ckpt:
+            n = disable_act_ckpt(self.model)
+            logging.info(f"Activation checkpointing disabled in the backbones ({n} switches)")
+        n_train = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        n_total = sum(p.numel() for p in self.model.parameters())
+        logging.info(f"Protocol: trainable parameters {n_train / 1e6:.1f} M of {n_total / 1e6:.1f} M "
+                     f"(freeze_text={self.freeze_text}, act_ckpt={self.act_ckpt})")
 
     # ---- paths ------------------------------------------------------------------
     @property

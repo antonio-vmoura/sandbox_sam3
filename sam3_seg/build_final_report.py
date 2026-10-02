@@ -84,13 +84,14 @@ INSTANCE_KEYS: tuple[str, ...] = (
 #: Base-setup keys that must be identical between Baseline and Optimised runs.
 BASE_CHECK_KEYS: tuple[str, ...] = (
     "epochs", "patience", "amp", "seed", "batch", "resolution", "prompt", "grad_accum_chunks",
-    "act_ckpt", "deterministic", "strict_determinism", "monitor", "score_threshold",
+    "act_ckpt", "freeze_text", "deterministic", "strict_determinism", "monitor", "score_threshold",
 )
 
 #: SAM 3 deviations from the YOLO26 / U-Net protocol (disclosed in the report).
 PROTOCOL_NOTES: list[str] = [
     f"Training budget {TRAIN_EPOCHS} epochs / patience {TRAIN_PATIENCE} (YOLO26, U-Net: 120 / 120), i.e. no early stopping: "
-    "one FP32 epoch of the 840 M-parameter model takes ~1.8 h on a V100S.",
+    "training uses FP16 AMP, a frozen text encoder and no activation checkpointing in the backbones "
+    "(the former FP32 setup took ~1.9 h per epoch on a V100S).",
     f"HPO {HPO_ITERATIONS} trials x {HPO_EPOCHS} epochs, patience {HPO_PATIENCE} (YOLO26, U-Net: 30 x 30), "
     "Optuna TPE with 5 start-up trials.",
     "Determinism: seeds, cuDNN deterministic, deterministic grid_sample, warn-only deterministic "

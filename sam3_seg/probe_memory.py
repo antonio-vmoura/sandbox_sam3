@@ -42,23 +42,6 @@ BASE_YAML = "sam3_seg/configs/sam3_base_recipe.yaml"   # frozen official recipe 
 N_TRAIN_FULL = 2594
 
 
-def disable_act_ckpt(model) -> int:
-    """Turn off activation checkpointing in the two large backbones; return how many switches.
-
-    SAM 3's detector encoder and decoder *assert* activation checkpointing in
-    training mode (``encoder.py`` / ``decoder.py``), so the small detector
-    modules keep the official setting; the vision trunk (ViT, 454 M params) and
-    the text encoder (354 M) — where nearly all the recompute cost is — run
-    without it. Numerically identical to the official setting.
-    """
-    n = 0
-    for root in (model.backbone.vision_backbone, model.backbone.language_backbone):
-        for mod in root.modules():
-            for attr in ("use_act_checkpoint", "grad_checkpointing"):
-                if isinstance(getattr(mod, attr, None), bool) and getattr(mod, attr):
-                    setattr(mod, attr, False)
-                    n += 1
-    return n
 
 
 def worker(args) -> None:
@@ -68,6 +51,8 @@ def worker(args) -> None:
     import torch
     from hydra.utils import instantiate
     from omegaconf import OmegaConf
+
+    from protocol_trainer import disable_act_ckpt
 
     from sam3.train.trainer import Trainer
     from sam3.train.utils.train_utils import register_omegaconf_resolvers

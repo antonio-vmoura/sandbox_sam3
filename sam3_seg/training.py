@@ -4,7 +4,7 @@
 official SAM 3 trainer wrapped by :class:`protocol_trainer.ProtocolTrainer`:
 
 * the config is built from the frozen official recipe
-  (``configs/sam3_base_recipe.yaml``) + the protocol (data files, FP32, seed 0,
+  (``configs/sam3_base_recipe.yaml``) + the protocol (data files, FP16 AMP, seed 0,
   budget, early stopping, prompt data, hyperparameters) and written to
   ``<run_dir>/config.yaml`` (generated configs never enter the source tree);
 * the run is a separate process (``run_training.py``): a CUDA error or an
@@ -127,6 +127,9 @@ def build_config(protocol: dict[str, Any], image_dir: Path, train_json: Path, va
     t.skip_first_val = False
     t.skip_saving_ckpts = False
     t.optim.amp.enabled = bool(protocol["amp"])
+    t.optim.amp.amp_dtype = "float16"           # the V100 has no BF16
+    t.freeze_text = bool(protocol["freeze_text"])
+    t.act_ckpt = bool(protocol["act_ckpt"])
     t.cuda = {"cudnn_deterministic": bool(protocol["deterministic"]), "cudnn_benchmark": False}
     cfg.study = {"deterministic": bool(protocol["deterministic"]),
                  "strict_determinism": bool(protocol["strict_determinism"])}   # read by run_training.py
@@ -235,10 +238,20 @@ def _train_locked(phase, model_name, protocol, image_dir, train_json, val_json, 
         env.setdefault("CUDA_VISIBLE_DEVICES", str(protocol["device"]))
     env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(Path(__file__).resolve().parent),
                                                       env.get("PYTHONPATH", "")]))
+    env["PYTHONUNBUFFERED"] = "1"     # stream the trainer's lines as they are printed
     t0 = time.perf_counter()
-    with (run_dir / "train.log").open("a") as logf:
-        rc = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "run_training.py"),
-                             str(run_dir / "config.yaml")], stdout=logf, stderr=subprocess.STDOUT, env=env).returncode
+    # The trainer's output goes to train.log AND to our stdout, so progress lines
+    # also reach the terminal log (tee'd by wait_gpu_sam3.sh).
+    with (run_dir / "train.log").open("a") as logf, \
+            subprocess.Popen([sys.executable, str(Path(__file__).resolve().parent / "run_training.py"),
+                              str(run_dir / "config.yaml")], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             env=env, text=True, errors="replace", bufsize=1) as proc:
+        for line in proc.stdout:
+            logf.write(line)
+            logf.flush()
+            sys.stdout.write(line)
+            sys.stdout.flush()
+        rc = proc.wait()
     if rc == EXIT_OOM:
         log("oom")
         raise TrainingOOM(f"{run_dir}: CUDA out of memory (see train.log)")

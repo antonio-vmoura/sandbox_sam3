@@ -23,7 +23,7 @@ touches it:
   identical. COCO mAP50-95 is the subject of the official evaluator and is not
   recomputed here.
 
-FP32 is the primary result (training was FP32); FP16 (SAM 3's official
+FP32 is the primary result (training used FP16 AMP with FP32 master weights); FP16 (SAM 3's official
 ``torch.autocast`` path) quantifies the accuracy cost of half precision.
 
 Outputs (per variant/model/precision), as YOLO26::

@@ -3,11 +3,15 @@
 # wait_gpu_sam3.sh — Aguarda a GPU ficar ociosa e então lança o pipeline SAM 3
 # (run_pipeline_sam3.sh) dentro do container ``sam3_ft``.
 #
-# 1. Consulta ``nvidia-smi`` uma vez por minuto na GPU ${GPU_DEVICE}.
-# 2. A GPU é considerada ociosa quando memory.used < 1000 MiB E
-#    utilization.gpu < 10%.
-# 3. Após ``REQUIRED_IDLE_MINUTES`` verificações ociosas consecutivas, executa
-#    o bloco ``docker run`` abaixo.
+# 1. Consulta ``nvidia-smi`` a cada ``POLL_INTERVAL`` segundos (padrão 5) na
+#    GPU ${GPU_DEVICE}.
+# 2. A GPU está "livre" quando não roda nenhum processo de computação E
+#    memory.used < ``MAX_MEM_MIB`` (1000) E utilization.gpu < ``MAX_UTIL``
+#    (10%). Uma falha do ``nvidia-smi`` conta como ocupada.
+# 3. O pipeline inicia IMEDIATAMENTE na primeira verificação livre
+#    (``CONFIRM_CHECKS=1``). Use ``CONFIRM_CHECKS=N`` para exigir N
+#    verificações livres consecutivas (ex.: ignorar o intervalo curto entre
+#    dois jobs de outro usuário). Em seguida executa o bloco ``docker run``.
 #
 # O pipeline é retomável: relançar o mesmo comando continua um estudo
 # interrompido em vez de recomeçá-lo (relance SEM --force). O log do terminal
@@ -18,32 +22,42 @@
 GPU_DEVICE="${GPU_DEVICE:-0}"
 PIPELINE_NAME="${PIPELINE_NAME:-pipeline_final_v1}"
 YOLO26_DATASET="${YOLO26_DATASET:-$(pwd)/../sandbox_yolo26/datasets/isic2018_task1_official}"
-CHECK_INTERVAL=60
-REQUIRED_IDLE_MINUTES=3
-IDLE_COUNT=0
+POLL_INTERVAL="${POLL_INTERVAL:-5}"
+CONFIRM_CHECKS="${CONFIRM_CHECKS:-1}"
+MAX_MEM_MIB="${MAX_MEM_MIB:-1000}"
+MAX_UTIL="${MAX_UTIL:-10}"
 
-echo "Aguardando a GPU ${GPU_DEVICE} ficar ociosa por ${REQUIRED_IDLE_MINUTES} minuto(s)..."
+gpu_free() {
+    local q mem util uuid apps
+    STATUS=""
+    q=$(nvidia-smi --query-gpu=memory.used,utilization.gpu,uuid --format=csv,noheader,nounits -i "${GPU_DEVICE}" 2>/dev/null) || return 1
+    IFS=', ' read -r mem util uuid <<<"${q}"
+    [[ "${mem}" =~ ^[0-9]+$ && "${util}" =~ ^[0-9]+$ ]] || return 1
+    apps=$(nvidia-smi --query-compute-apps=gpu_uuid --format=csv,noheader 2>/dev/null | grep -c "${uuid}")
+    STATUS="${mem}MiB ${util}% ${apps} proc"
+    [ "${apps}" -eq 0 ] && [ "${mem}" -lt "${MAX_MEM_MIB}" ] && [ "${util}" -lt "${MAX_UTIL}" ]
+}
 
+echo "Aguardando a GPU ${GPU_DEVICE} ficar livre (consulta a cada ${POLL_INTERVAL}s, ${CONFIRM_CHECKS} verificação(ões))..."
+FREE_COUNT=0
+LAST_STATE=""
 while true; do
-    MEM=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits -i "${GPU_DEVICE}")
-    UTIL=$(nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits -i "${GPU_DEVICE}")
-    if [ "$MEM" -lt 1000 ] && [ "$UTIL" -lt 10 ]; then
-        ((IDLE_COUNT++))
-        echo "$(date) | GPU${GPU_DEVICE}: ${MEM}MiB ${UTIL}% -> ociosa há $IDLE_COUNT minuto(s)."
-        if [ "$IDLE_COUNT" -ge "$REQUIRED_IDLE_MINUTES" ]; then
-            echo "GPU liberada — iniciando o pipeline SAM 3."
-            break
-        fi
+    if gpu_free; then
+        ((FREE_COUNT++))
+        STATE="livre"
     else
-        if [ "$IDLE_COUNT" -gt 0 ]; then
-            echo "$(date) | Atividade detectada — zerando contador de ociosidade."
-        else
-            echo "$(date) | GPU${GPU_DEVICE}: ${MEM}MiB ${UTIL}% -> ocupada."
-        fi
-        IDLE_COUNT=0
+        FREE_COUNT=0
+        STATE="ocupada"
     fi
-    sleep $CHECK_INTERVAL
+    # Registra só as mudanças de estado (a consulta a cada 5 s inundaria o terminal).
+    if [ "${STATE}" != "${LAST_STATE}" ]; then
+        echo "$(date) | GPU${GPU_DEVICE}: ${STATUS:-nvidia-smi falhou} -> ${STATE}."
+        LAST_STATE="${STATE}"
+    fi
+    [ "${FREE_COUNT}" -ge "${CONFIRM_CHECKS}" ] && break
+    sleep "${POLL_INTERVAL}"
 done
+echo "GPU liberada — iniciando o pipeline SAM 3."
 
 # O dataset YOLO26 (fonte única de verdade) é montado somente-leitura; o
 # dataset COCO da Fase 0 é escrito em datasets/isic_2018_task1_sam3. Os pesos

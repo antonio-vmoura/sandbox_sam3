@@ -15,13 +15,14 @@
 #                                    profiling as YOLO26)
 #
 # Every phase shares one base setup (official SAM 3 recipe, 1008 px, prompt
-# "skin lesion", batch 2, activation checkpointing, FP32, seed 0,
+# "skin lesion", batch 2, FP16 AMP, frozen text encoder, no activation
+# checkpointing in the backbones, seed 0,
 # deterministic kernels except the ViT attention backward), defined once in
 # sam3_seg/common.py, so the tuned
 # hyperparameters (learning dynamics + augmentation) are the only variable
 # between Baseline and Optimised.
 #
-# Compute budget (SAM 3-specific, disclosed; one FP32 epoch ~ 2 h on a V100S):
+# Compute budget (SAM 3-specific, disclosed; the former FP32 setup took ~2 h per epoch on a V100S):
 #   Phases 1, 2, 4: 30 epochs, patience 30 = no early stopping   (YOLO26 / U-Net: 120 / 120)
 #   Phase 3:        10 trials x 10 epochs, patience 10 = no early stopping   (YOLO26 / U-Net: 30 x 30)
 #

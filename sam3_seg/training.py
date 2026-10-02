@@ -4,7 +4,7 @@
 official SAM 3 trainer wrapped by :class:`protocol_trainer.ProtocolTrainer`:
 
 * the config is built from the frozen official recipe
-  (``configs/sam3_base_recipe.yaml``) + the protocol (data files, FP32, seed 0,
+  (``configs/sam3_base_recipe.yaml``) + the protocol (data files, FP16 AMP, seed 0,
   budget, early stopping, prompt data, hyperparameters) and written to
   ``<run_dir>/config.yaml`` (generated configs never enter the source tree);
 * the run is a separate process (``run_training.py``): a CUDA error or an
@@ -127,6 +127,9 @@ def build_config(protocol: dict[str, Any], image_dir: Path, train_json: Path, va
     t.skip_first_val = False
     t.skip_saving_ckpts = False
     t.optim.amp.enabled = bool(protocol["amp"])
+    t.optim.amp.amp_dtype = "float16"           # the V100 has no BF16
+    t.freeze_text = bool(protocol["freeze_text"])
+    t.act_ckpt = bool(protocol["act_ckpt"])
     t.cuda = {"cudnn_deterministic": bool(protocol["deterministic"]), "cudnn_benchmark": False}
     cfg.study = {"deterministic": bool(protocol["deterministic"]),
                  "strict_determinism": bool(protocol["strict_determinism"])}   # read by run_training.py

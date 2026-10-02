@@ -57,9 +57,9 @@ PROMPT: str = "skin lesion"
 SEED: int = 0
 
 #: Training budget shared by Phases 1, 2 and 4 — **SAM 3-specific** (YOLO26 and
-#: the U-Net use 120 epochs). One FP32 epoch of the 840 M-parameter model takes
-#: ~106 min on the V100S (memory probe), so 120 epochs (> 8 days per run) are
-#: infeasible; this reduced budget is a disclosed limitation of the study.
+#: the U-Net use 120 epochs). One FP32 epoch of the 840 M-parameter model took
+#: ~106 min on the V100S (memory probe), so 120 epochs (> 8 days per run) were
+#: infeasible; the faster FP16 base setup below keeps the same budget; this reduced budget is a disclosed limitation of the study.
 #: Patience = epochs, i.e. no early stopping (as YOLO26 and the U-Net): on the
 #: 100-image validation split early stopping was noise-driven in both other
 #: pipelines and stopped training prematurely.
@@ -306,15 +306,19 @@ def exclusive_lock(directory: Path, name: str = ".lock") -> Iterator[None]:
 # Training protocols
 # ----------------------------------------------------------------------------
 #: Fixed base setup shared by EVERY phase (never searched, never overridden).
-#: Memory probe (V100S 32 GB, FP32): batch 2 with the official activation
-#: checkpointing peaks at 12.8 GiB allocated / 16.5 GiB on the device.
+#: Throughput: the FP32 setup (official activation checkpointing, all 840 M
+#: params trainable) ran at 5.3 s / step = ~1.9 h / epoch on the V100S, ~25 days
+#: for Phases 1-4. The study therefore trains with the official recipe's FP16
+#: AMP (the V100 has no BF16), a frozen text encoder and no activation
+#: checkpointing in the two backbones.
 BASE_SETUP: dict[str, Any] = {
     "resolution": RESOLUTION,
     "prompt": PROMPT,
     "batch": 2,                   # official train_batch_size
-    "grad_accum_chunks": 1,       # no gradient accumulation (fits in FP32)
-    "act_ckpt": True,             # official setting (numerically neutral; memory/speed only)
-    "amp": False,                 # FP32 (protocol): no FP16 mixed precision
+    "grad_accum_chunks": 1,       # no gradient accumulation
+    "act_ckpt": False,            # off in the ViT + text encoder (numerically neutral; memory/speed only)
+    "freeze_text": True,          # text encoder (354 M) frozen: the prompt is constant
+    "amp": True,                  # FP16 mixed precision with GradScaler (official recipe setting)
     "seed": SEED,
     "deterministic": True,        # seeds + cuDNN deterministic + warn-only deterministic algorithms
                                   # + deterministic grid_sample (see run_training.py)

@@ -3,8 +3,8 @@
 Fine-tunes SAM 3 (all 840.5 M parameters, text encoder included) with Meta's
 official trainer and recipe, the fixed **base setup** shared by every phase
 and the **default hyperparameters** (the official recipe values) via
-:func:`common.baseline_protocol`: FP32, batch 2, official activation
-checkpointing, text prompt ``"skin lesion"``, seed 0, deterministic kernels
+:func:`common.baseline_protocol`: FP16 AMP, batch 2, frozen text encoder, no
+activation checkpointing in the backbones, text prompt ``"skin lesion"``, seed 0, deterministic kernels
 (except the ViT attention backward, see ``run_training.py``). Baseline and Optimised (Phase 4) share the identical base setup and
 differ only in the tuned hyperparameters.
 
@@ -81,8 +81,8 @@ def main() -> int:
     print(f"Phase 1 (Baseline) for models: {args.models}")
     print(f"  device = {device}   data = {args.data}   output = {paths.phase1_dir}")
     print(f"  data   = {len(data.ids(train_json))} train / {len(data.ids(val_json))} val images (test untouched)")
-    print(f"  budget = {args.epochs} epochs, patience {args.patience} (val JSI), FP32, seed 0")
-    print("  setup  = official SAM 3 recipe, 1008 px, batch 2, act. checkpointing, prompt 'skin lesion'")
+    print(f"  budget = {args.epochs} epochs, patience {args.patience} (val JSI), FP16 AMP, seed 0")
+    print("  setup  = official SAM 3 recipe, 1008 px, batch 2, frozen text encoder, no act. ckpt, prompt 'skin lesion'")
     print("  HPs    = official recipe defaults (lr_scale 0.1, wd 0.1, lrd 0.9, warmup 2, hflip 0.5, resize min 480)")
 
     summary: list[dict] = []

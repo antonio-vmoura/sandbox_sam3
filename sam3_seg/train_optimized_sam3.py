@@ -2,7 +2,7 @@
 
 Fine-tunes SAM 3 once on the standard train/val split with the
 hyperparameters selected in Phase 3, via :func:`common.optimized_protocol`:
-the **same base setup** as the Baseline (official recipe, FP32, batch 2,
+the **same base setup** as the Baseline (official recipe, FP16 AMP, batch 2,
 budget, seed, prompt) + the tuned learning dynamics / augmentation. Tuned
 files that try to change a base-setup key are rejected.
 
@@ -76,7 +76,7 @@ def main() -> int:
 
     print(f"Phase 4 (Optimised) for models: {args.models}")
     print(f"  device = {device}   output = {paths.phase4_dir}")
-    print(f"  budget = {args.epochs} epochs, patience {args.patience} (val JSI), FP32, seed 0")
+    print(f"  budget = {args.epochs} epochs, patience {args.patience} (val JSI), FP16 AMP, seed 0")
 
     summary: list[dict] = []
     t0 = time.perf_counter()

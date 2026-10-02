@@ -7,7 +7,7 @@ These files are **byte-identical in `sandbox_yolo26`, `sandbox_unet` and `sandbo
 |---|---|
 | `Article_Figures_and_Tables.ipynb` | Master notebook: unified LaTeX tables, paired cross-architecture statistics and figures (YOLO26-seg vs. U-Net vs. SAM 3) |
 | `article_aggregator.py` | The logic behind the notebook; also runnable headless: `python article_aggregator.py` |
-| `MASTER_METHODOLOGY_FOR_ARTICLE.md` | Unified methodology (5-phase design, fairness controls, early-stopping justification, model-specific quirks, Phase 0, metrics, efficiency protocol, limitations, Methods wording) |
+| `methodology_notes.md` | Unified methodology (5-phase design, fairness controls, early-stopping justification, model-specific quirks, Phase 0, metrics, efficiency protocol, limitations, Methods wording) |
 
 **Where to run.** Put the notebook and `article_aggregator.py` in the folder that contains the three repositories
 (e.g. `~/projects/` with `sandbox_yolo26/`, `sandbox_unet/`, `sandbox_sam3/` — any letter case), or run them from here:

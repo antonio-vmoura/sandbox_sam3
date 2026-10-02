@@ -1,8 +1,8 @@
-# Master methodology for the article — YOLO26-seg vs. U-Net vs. SAM 3 on ISIC 2018 Task 1
+# Methodology notes — YOLO26-seg vs. U-Net vs. SAM 3 on ISIC 2018 Task 1
 
-> **What this document is.** A single, citable description of how the three experimental arms
-> (`sandbox_yolo26`, `sandbox_unet`, `sandbox_sam3`) were built, trained, evaluated and compared, written so that the
-> Methods, Results and Limitations sections of the thesis/article can be drafted directly from it.
+> **What these notes are.** Working lab notes describing how the three experimental arms
+> (`sandbox_yolo26`, `sandbox_unet`, `sandbox_sam3`) were built, trained, evaluated and compared — the protocol
+> reference from which the Methods, Results and Limitations sections of the thesis/article are drafted.
 >
 > **Sources.** (1) The code — the authoritative description of the final protocol (`common.py`, the phase scripts
 > and `segmentation_metrics.py` of each repository); (2) the three READMEs and the commit history, which record the
@@ -219,7 +219,8 @@ the same size as — or larger than — the real improvements late in training, 
 by chance while the model is still improving. *(Illustration only: if per-image JSI has a standard deviation σ, the
 standard error of a 100-image mean is σ/10; with σ = 0.15 that is 0.015, against ≈ 0.0065 on a 539-image CV fold.)*
 
-**Evidence from the first full runs (`logs/pipeline_final_v1`, on the Roboflow export of § 2.5, before the change):**
+**Evidence from the first full runs (on the Roboflow export of § 2.5, before the change; their outputs were moved
+aside by `--force` and are not part of the final `logs/pipeline_final_v1` results):**
 
 | Arm | Observation with early stopping (patience 25; HPO 10) | Consequence |
 |---|---|---|
@@ -664,13 +665,13 @@ $$
 | Sensitivity, specificity, accuracy | TP/(TP+FN), TN/(TN+FP), (TP+TN)/N | |
 | **Boundary IoU** | IoU of the boundary bands (pixels within *d* of each mask's own contour), *d* = 2 % of the image diagonal (≈ 26 px at 1024 × 768) | Cheng et al., CVPR 2021 |
 | **NSD** (surface Dice) | fraction of both contours within τ of the other contour, τ = 1 % of the diagonal (≈ 13 px) | Nikolov et al., 2021; recommended by Metrics Reloaded |
-| **HD95** | max of the two directed 95th percentiles of contour-to-contour distances, **pixels** at dataset resolution (lower is better) | MONAI / DeepMind `surface-distance` convention; added in this audit |
+| **HD95** | max of the two directed 95th percentiles of contour-to-contour distances, **pixels** at dataset resolution (lower is better; image sizes vary, so report the median next to the mean — the diagonal penalty of a missed lesion dominates the mean) | MONAI / DeepMind `surface-distance` convention; added in this audit |
 
 * **Ground truth** = the official mask (`masks/<id>.png`; for SAM 3 its lossless RLE). **Prediction**: YOLO26 — each
   test image alone (batch 1), `conf = 0.25`, instance masks at the original resolution (`retina_masks=True`), binarised
   at 0.5 and merged (union); U-Net — bilinear upsampling of the probability map, threshold 0.5; SAM 3 — § 6.3.
-* **Empty masks:** an empty prediction with a non-empty ground truth scores DSC = JSI = 0 (boundary scores 0, HD95 =
-  image diagonal) and is **included** in all averages — missed lesions count as complete failures (Metrics Reloaded:
+* **Empty masks:** an empty prediction with a non-empty ground truth (or vice versa) scores DSC = JSI = 0 (boundary scores 0,
+  HD95 = image diagonal) and is **included** in all averages — missed lesions count as complete failures (Metrics Reloaded:
   penalise, never drop). If both were empty: overlap and boundary scores 1, HD95 0; sensitivity is then undefined and
   excluded from its mean. The number of empty predictions is reported ("Missed" in Table 1).
 * Contours are 1-pixel inner boundaries; the image border counts as background. HD95 was verified against a
@@ -729,7 +730,7 @@ answered by measured latency, throughput and memory of the deployed models.
 | `end_to_end_dataset` | the same pipeline once on each of the **first 100 test images sorted by ISIC ID** (the same images for every model), after one untimed pass (cuDNN autotuning of every input shape) — input-dependent spread (image size, number of instances) |
 | SAM 3 only | `forward_cached_text`: forward with the prompt's text features precomputed (fixed-prompt deployment) |
 | Statistics | mean, SD, **median** (typical latency), P90, **P95** (the worst-case behaviour relevant for real time), P99, min, max; **FPS** = 1000 / mean latency (1000 / median also reported); raw per-iteration latencies kept for distribution plots |
-| **Peak VRAM** | (a) **allocator peak** — `torch.cuda.max_memory_allocated` during the timed loops, counters reset *after* warm-up (with `cudnn.benchmark` the warm-up peak is dominated by cuDNN's algorithm-search workspaces — e.g. ≈ 2.2 GB vs. ≈ 74 MB at steady state for YOLO26n-seg FP32 in a test — and is recorded separately) = the model's own footprint; (b) **process peak** — device memory held by the benchmark process as reported by the driver (`nvidia-smi` delta: CUDA context, kernels and allocator cache included) = what a deployment GPU must provide; plus the CUDA-context size and the VRAM of the weights alone |
+| **Peak VRAM** | (a) **allocator peak** — `torch.cuda.max_memory_allocated` during the timed loops, counters reset *after* warm-up (with `cudnn.benchmark` the warm-up peak is dominated by cuDNN's algorithm-search workspaces — e.g. ≈ 2.2 GB vs. ≈ 74 MB at steady state for YOLO26n-seg FP32 in a test — and is recorded separately) = the model's own footprint; (b) **process footprint** (`vram_process_peak_mb`) — device memory held by the benchmark process as reported by the driver (`nvidia-smi` delta: CUDA context, kernels and allocator cache included), sampled after each timed scope and maximised over the samples — an approximation of what a deployment GPU must provide, not a continuously tracked peak, and only meaningful on an otherwise idle GPU (the delta includes other processes); plus the CUDA-context size and the VRAM of the weights alone |
 | Host RAM | resident set size after model loading and after the benchmark, and its peak over the process lifetime (`getrusage`) |
 | Units | all memory and size figures in MiB (2²⁰ bytes) |
 | Contention | GPU utilisation, memory in use, SM clock and temperature sampled with `nvidia-smi` before and after each run; utilisation by other processes > 5 % flags the run `contended`; only uncontended measurements are reported (re-run on an idle GPU) |
@@ -890,7 +891,7 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 
 | Committee demand | Where it is met |
 |---|---|
-| Measured real-time / on-device evidence, not only GFLOPs/params | Phase 5b: batch-1 median and P95 latency, FPS, allocator and process peak VRAM, end-to-end over 100 distinct images; real-time criterion on P95 (Table 2, Fig. 2, 6) |
+| Measured real-time / on-device evidence, not only GFLOPs/params | Phase 5b: batch-1 median and P95 latency, FPS, allocator and process VRAM footprint, end-to-end over 100 distinct images; real-time criterion on P95 (Table 2, Fig. 2, 6) |
 | Metrics Reloaded: boundary metric | Boundary IoU, NSD, HD95 in every test/CV summary (Table 1, Fig. 5) |
 | 95 % CIs | seeded bootstrap CI for every per-image metric; paired bootstrap CI for every difference |
 | Paired statistical comparisons | Wilcoxon + bootstrap within arms (HPO) and across architectures (Holm, Friedman, effect sizes) |

@@ -2,19 +2,19 @@
 
 > **What these notes are.** Working lab notes describing how the three experimental arms
 > (`sandbox_yolo26`, `sandbox_unet`, `sandbox_sam3`) were built, trained, evaluated and compared — the protocol
-> reference from which the Methods, Results and Limitations sections of the thesis/article are drafted.
+> reference from which the Methods, Results and Limitations sections of the thesis are drafted.
 >
 > **Sources.** (1) The code — the authoritative description of the final protocol (`common.py`, the phase scripts
 > and `segmentation_metrics.py` of each repository); (2) the three READMEs and the commit history, which record the
 > *why* of each protocol decision with the numbers observed in the first full runs; (3) the authors' three per-arm
-> notes (`METHODOLOGY_NOTES_FOR_ARTICLE.md` of YOLO26, U-Net and SAM 3), cross-checked line by line against the code.
+> lab notes of YOLO26, U-Net and SAM 3 (kept locally, not versioned), cross-checked line by line against the code.
 > Where a note describes an earlier state of the protocol (e.g. the Roboflow export, early stopping with patience 25,
 > HPO micro-batch 32), this document follows the **current code** and lists every superseded statement in
 > [Appendix A](#appendix-a--statements-in-the-per-arm-notes-that-the-final-protocol-supersedes), so the notes and
 > this document never silently disagree.
 >
 > **Placeholders.** Everything written as **[RESULT]** or **[…]** must be filled in after the final run (most values
-> come from `article_outputs/`, produced by `results_analysis.ipynb`). Numbers quoted from earlier or
+> come from `analysis_outputs/`, produced by `results_analysis.ipynb`). Numbers quoted from earlier or
 > preliminary runs are labelled as such.
 
 ---
@@ -146,7 +146,7 @@ The final protocol is the third iteration of the data handling; earlier numbers 
 
 ### 3.1 The phases
 
-| Phase | Purpose | Data touched | Output used in the article |
+| Phase | Purpose | Data touched | Output used in the thesis |
 |---|---|---|---|
 | **0 — Dataset** | build and verify the shared dataset (§ 2) | raw release | dataset description |
 | **1 — Baseline** | train with the **base setup + default hyperparameters** | train (fit), val (checkpoint selection) | Baseline model (`best.pt`) |
@@ -590,7 +590,7 @@ weeks on one GPU (Phases 2 and 3 are independent and can run in parallel on two 
   mechanism itself is exact. **In the warn-only mode used by the study**, the remaining nondeterministic attention
   backward makes two identical runs differ by **up to 6.8 × 10⁻⁵ in the weights after 3 epochs** and in the 5th decimal of
   the validation JSI. Repeated or resumed SAM 3 runs are therefore **statistically equivalent, not bit-identical**; the
-  article must not claim bit-exact reproducibility for SAM 3.
+  thesis must not claim bit-exact reproducibility for SAM 3.
 * **Run lifecycle and isolation.** Each training run is a separate process (`run_training.py`), so a CUDA error or OOM
   cannot take down the HPO driver; `run_state.json` records status, protocol and protocol hash, data fingerprints and
   events (atomic writes); a completed run is skipped, a changed protocol or dataset is refused, an exclusive POSIX lock
@@ -740,7 +740,7 @@ answered by measured latency, throughput and memory of the deployed models.
 Baseline and Optimized share the architecture and therefore the cost; their efficiency figures coincide within noise
 and are reported for the deployed (Optimized) models.
 
-**Real-time criterion used in the article:** a model is real-time at *F* FPS if its **P95 end-to-end latency over the
+**Real-time criterion used in the thesis:** a model is real-time at *F* FPS if its **P95 end-to-end latency over the
 100 distinct test images** is ≤ 1000 / *F* ms (default *F* = 30 → 33.3 ms), at batch 1 on the reported GPU. Using P95
 rather than the mean guarantees the frame budget for 95 % of frames.
 
@@ -753,8 +753,8 @@ benchmark.
 
 ## 9. Cross-architecture aggregation (root notebook)
 
-`results_analysis.ipynb` (driver) and `article_aggregator.py` (logic, also runnable headless) read only the
-Phase 5 summaries and per-image files of the three pipelines and write `article_outputs/`:
+`results_analysis.ipynb` (driver) and `results_aggregator.py` (logic, also runnable headless) read only the
+Phase 5 summaries and per-image files of the three pipelines and write `analysis_outputs/`:
 
 * **Tables (LaTeX `booktabs` + CSV):** 1 accuracy with 95 % CI (best per column in bold); 2 efficiency with the
   real-time criterion; 3 HPO effect; 4 FP16 vs. FP32; 5 training cost per phase; 6 CV vs. test; 7 pairwise paired tests
@@ -869,7 +869,7 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 
 ## 13. Artefact map: which file feeds which table or figure
 
-| Article element | Produced by | Underlying files |
+| Thesis element | Produced by | Underlying files |
 |---|---|---|
 | Table 1, Fig. 1, 3, 5 | root notebook | `<repo>/logs/<name>/summary/test_accuracy.csv`, `phase5_test/per_image/*.csv` |
 | Table 2, Fig. 1, 2, 6 | root notebook | `summary/efficiency.csv`, `phase5_test/efficiency/*.json` |
@@ -896,7 +896,7 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 | 95 % CIs | seeded bootstrap CI for every per-image metric; paired bootstrap CI for every difference |
 | Paired statistical comparisons | Wilcoxon + bootstrap within arms (HPO) and across architectures (Holm, Friedman, effect sizes) |
 | Standardised visual artefacts | notebooks 01/02 identical across repositories (shared cells byte-identical) |
-| Unified article artefacts | root notebook + aggregator → LaTeX tables and figures |
+| Unified analysis artefacts | root notebook + aggregator → LaTeX tables and figures |
 
 ### 14.2 Points to verify or disclose before submission (merged from the three per-arm notes)
 

@@ -1,11 +1,11 @@
-# `article/` — cross-architecture article artefacts
+# `analysis/` — cross-architecture results analysis
 
 These files are **byte-identical in `sandbox_yolo26`, `sandbox_unet` and `sandbox_sam3`** (like
 `segmentation_metrics.py`): whichever repository you pull, you get the same article tooling.
 
 | File | Content |
 |---|---|
-| `Article_Figures_and_Tables.ipynb` | Master notebook: unified LaTeX tables, paired cross-architecture statistics and figures (YOLO26-seg vs. U-Net vs. SAM 3) |
+| `results_analysis.ipynb` | Master notebook: unified LaTeX tables, paired cross-architecture statistics and figures (YOLO26-seg vs. U-Net vs. SAM 3) |
 | `article_aggregator.py` | The logic behind the notebook; also runnable headless: `python article_aggregator.py` |
 | `methodology_notes.md` | Unified methodology (5-phase design, fairness controls, early-stopping justification, model-specific quirks, Phase 0, metrics, efficiency protocol, limitations, Methods wording) |
 

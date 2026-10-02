@@ -19,7 +19,7 @@ The pipelines are found automatically in the folder that contains the three
 repositories (``sandbox_yolo26``, ``sandbox_unet``, ``sandbox_sam3``; the
 match is case-insensitive) — the current directory, its parent or its
 grandparent, so this file works from that root folder or from a copy in
-``<repo>/article/``. Override with ``$YOLO26_PIPELINE_DIR``,
+``<repo>/analysis/``. Override with ``$YOLO26_PIPELINE_DIR``,
 ``$UNET_PIPELINE_DIR``, ``$SAM3_PIPELINE_DIR`` (each pointing at a pipeline
 folder) or ``--root``. A missing pipeline is skipped with a warning.
 

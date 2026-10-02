@@ -14,7 +14,7 @@
 > this document never silently disagree.
 >
 > **Placeholders.** Everything written as **[RESULT]** or **[…]** must be filled in after the final run (most values
-> come from `article_outputs/`, produced by `Article_Figures_and_Tables.ipynb`). Numbers quoted from earlier or
+> come from `article_outputs/`, produced by `results_analysis.ipynb`). Numbers quoted from earlier or
 > preliminary runs are labelled as such.
 
 ---
@@ -753,7 +753,7 @@ benchmark.
 
 ## 9. Cross-architecture aggregation (root notebook)
 
-`Article_Figures_and_Tables.ipynb` (driver) and `article_aggregator.py` (logic, also runnable headless) read only the
+`results_analysis.ipynb` (driver) and `article_aggregator.py` (logic, also runnable headless) read only the
 Phase 5 summaries and per-image files of the three pipelines and write `article_outputs/`:
 
 * **Tables (LaTeX `booktabs` + CSV):** 1 accuracy with 95 % CI (best per column in bold); 2 efficiency with the
@@ -935,7 +935,7 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 * `build_final_report.py`: HD95 in the accuracy and HPO-gain tables (direction-aware improvement counts); new
   efficiency columns (`e2e_dataset_*`, `vram_process_peak_mb`, `vram_cuda_context_mb`, `gflops_640`, `input_px`).
 * Notebooks 01/02 standardised (ground-truth column, standard figures A–C with DSC/JSI/BIoU and HD95, real-time table,
-  readable log axes, corrected stale notes); root notebook + aggregator added (`article/` in each repository).
+  readable log axes, corrected stale notes); root notebook + aggregator added (`analysis/` in each repository).
 * This document: cross-checked against the three per-arm notes (2026-10-02); their missing details merged, superseded
   statements listed in Appendix A.
 

@@ -271,7 +271,7 @@ Same notebooks as YOLO26 and the U-Net, adapted to SAM 3 (they read only the pip
 FPS, latency distribution, memory, accuracy–latency trade-off, **compute breakdown** — stage and attention vs.
 linear vs. convolution — and a **cross-architecture comparison** read from `../sandbox_yolo26` and
 `../sandbox_unet` when their summaries exist; LaTeX tables; standard figures A–C shared with YOLO26 and the U-Net).
-The full cross-architecture article notebook is in `article/` (see `article/README.md`).
+The full cross-architecture article notebook is in `analysis/` (see `analysis/README.md`).
 
 ```bash
 docker run --rm -it -p 8888:8888 --user "$(id -u):$(id -g)" -e HOME=/workspace/cache \

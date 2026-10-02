@@ -252,8 +252,8 @@ sandbox_sam3/
 │   ├── evaluate_test_set.py  benchmark_efficiency.py  build_final_report.py
 │   └── legacy/                # previous pipeline scripts (not used)
 ├── notebooks/
-│   ├── 01_Segmentation_Visualizer.ipynb
-│   └── 02_Metrics_and_Efficiency_Analysis.ipynb
+│   ├── 01_segmentation_visualizer.ipynb
+│   └── 02_metrics_and_efficiency_analysis.ipynb
 ├── utils/examples/            # Meta's SAM 3 example notebooks
 ├── utils/legacy/              # earlier conversion / metric scripts (kept as a backup)
 ├── notebooks/legacy/          # earlier analysis notebooks (kept as a backup)
@@ -266,8 +266,8 @@ Meta's original README is kept as `README_OFC.md`; `README_TRAIN.md` documents t
 ## Analysis notebooks
 
 Same notebooks as YOLO26 and the U-Net, adapted to SAM 3 (they read only the pipeline outputs; no GPU needed):
-`01_Segmentation_Visualizer` (ground truth green/solid vs. prediction red/dashed, Baseline vs. Optimised) and
-`02_Metrics_and_Efficiency_Analysis` (DSC/JSI across phases, paired HPO gain, accuracy vs. size, latency vs.
+`01_segmentation_visualizer` (ground truth green/solid vs. prediction red/dashed, Baseline vs. Optimised) and
+`02_metrics_and_efficiency_analysis` (DSC/JSI across phases, paired HPO gain, accuracy vs. size, latency vs.
 FPS, latency distribution, memory, accuracy–latency trade-off, **compute breakdown** — stage and attention vs.
 linear vs. convolution — and a **cross-architecture comparison** read from `../sandbox_yolo26` and
 `../sandbox_unet` when their summaries exist; LaTeX tables; standard figures A–C shared with YOLO26 and the U-Net).

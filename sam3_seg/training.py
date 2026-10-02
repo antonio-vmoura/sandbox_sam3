@@ -235,10 +235,20 @@ def _train_locked(phase, model_name, protocol, image_dir, train_json, val_json, 
         env.setdefault("CUDA_VISIBLE_DEVICES", str(protocol["device"]))
     env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(Path(__file__).resolve().parent),
                                                       env.get("PYTHONPATH", "")]))
+    env["PYTHONUNBUFFERED"] = "1"     # stream the trainer's lines as they are printed
     t0 = time.perf_counter()
-    with (run_dir / "train.log").open("a") as logf:
-        rc = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "run_training.py"),
-                             str(run_dir / "config.yaml")], stdout=logf, stderr=subprocess.STDOUT, env=env).returncode
+    # The trainer's output goes to train.log AND to our stdout, so progress lines
+    # also reach the terminal log (tee'd by wait_gpu_sam3.sh).
+    with (run_dir / "train.log").open("a") as logf, \
+            subprocess.Popen([sys.executable, str(Path(__file__).resolve().parent / "run_training.py"),
+                              str(run_dir / "config.yaml")], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             env=env, text=True, errors="replace", bufsize=1) as proc:
+        for line in proc.stdout:
+            logf.write(line)
+            logf.flush()
+            sys.stdout.write(line)
+            sys.stdout.flush()
+        rc = proc.wait()
     if rc == EXIT_OOM:
         log("oom")
         raise TrainingOOM(f"{run_dir}: CUDA out of memory (see train.log)")

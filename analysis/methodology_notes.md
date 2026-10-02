@@ -878,8 +878,8 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 | Table 5, Fig. 2a | root notebook | `summary/training_cost.csv` (from every `results.csv`) |
 | Table 6 | root notebook | `summary/phase2_cv_pixel.csv` |
 | Table 7, Fig. 4 | root notebook | per-image CSVs (paired by ISIC ID) |
-| Qualitative figure | `notebooks/01_segmentation_visualizer.ipynb` (each repo) | `phase5_test/masks/<variant>_<model>/`, dataset images and official masks |
-| Per-architecture figures | `notebooks/02_metrics_and_efficiency_analysis.ipynb` (each repo) | `summary/*` |
+| Qualitative figure | `analysis/01_segmentation_visualizer.ipynb` (each repo) | `phase5_test/masks/<variant>_<model>/`, dataset images and official masks |
+| Per-architecture figures | `analysis/02_metrics_and_efficiency_analysis.ipynb` (each repo) | `summary/*` |
 | SAM 3 compute breakdown | notebook 02 of `sandbox_sam3` (Figure 8) | `phase5_test/efficiency/*.json` → `gflops_by_component`, `gflops_by_op` |
 | Disclosures | `summary/final_results.json` → `warnings`, `protocol_notes`; `run_state.json`; `hpo_state.json` | printed by the root notebook |
 

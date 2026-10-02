@@ -252,10 +252,11 @@ sandbox_sam3/
 │   ├── evaluate_test_set.py  benchmark_efficiency.py  build_final_report.py
 │   └── legacy/                # previous pipeline scripts (not used)
 ├── analysis/                  # every Jupyter notebook + the cross-architecture tooling
-│   ├── 01_segmentation_visualizer.ipynb
-│   ├── 02_metrics_and_efficiency_analysis.ipynb
-│   ├── sam3_internal_analysis.ipynb
-│   ├── results_analysis.ipynb  results_aggregator.py  methodology_notes.md
+│   ├── 01_internal_analysis.ipynb          # run first: every phase, from the first epoch of Phase 1
+│   ├── 02_segmentation_visualizer.ipynb    # Phase 5
+│   ├── 03_metrics_and_efficiency.ipynb     # Phase 5
+│   ├── 04_cross_architecture_results.ipynb # Phase 5, all three architectures
+│   ├── results_aggregator.py  methodology_notes.md
 │   └── legacy/                # earlier analysis notebooks (kept as a backup)
 ├── utils/examples/            # Meta's SAM 3 example notebooks
 ├── utils/legacy/              # earlier conversion / metric scripts (kept as a backup)
@@ -268,12 +269,12 @@ Meta's original README is kept as `README_OFC.md`; `README_TRAIN.md` documents t
 ## Analysis notebooks
 
 Same notebooks as YOLO26 and the U-Net, adapted to SAM 3 (they read only the pipeline outputs; no GPU needed):
-`analysis/01_segmentation_visualizer` (ground truth green/solid vs. prediction red/dashed, Baseline vs. Optimised) and
-`analysis/02_metrics_and_efficiency_analysis` (DSC/JSI across phases, paired HPO gain, accuracy vs. size, latency vs.
+`analysis/02_segmentation_visualizer` (ground truth green/solid vs. prediction red/dashed, Baseline vs. Optimised) and
+`analysis/03_metrics_and_efficiency` (DSC/JSI across phases, paired HPO gain, accuracy vs. size, latency vs.
 FPS, latency distribution, memory, accuracy–latency trade-off, **compute breakdown** — stage and attention vs.
 linear vs. convolution — and a **cross-architecture comparison** read from `../sandbox_yolo26` and
 `../sandbox_unet` when their summaries exist; LaTeX tables; standard figures A–C shared with YOLO26 and the U-Net).
-`analysis/sam3_internal_analysis.ipynb` drills into every phase of SAM 3 (curves, CV folds, HPO, test metrics, segmentation grid; missing phases are skipped). The full cross-architecture analysis notebook is in `analysis/` (see `analysis/README.md`).
+`analysis/01_internal_analysis.ipynb` drills into every phase of SAM 3 (curves, CV folds, HPO, test metrics, segmentation grid; missing phases are skipped). The full cross-architecture analysis notebook is in `analysis/` (see `analysis/README.md`).
 
 ```bash
 docker run --rm -it -p 8888:8888 --user "$(id -u):$(id -g)" -e HOME=/workspace/cache \

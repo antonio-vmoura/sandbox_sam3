@@ -17,7 +17,7 @@ orchestrated by **`run_pipeline_sam3.sh`**.
 |---|---|
 | **Same data** | Phase 0 builds a COCO dataset **from the YOLO26 dataset itself**: same images (hard-linked), same split (2,594 / 100 / 1,000, the official split), each YOLO polygon rasterised with the shared convention and stored as RLE. Every image carries its ISIC ID. |
 | **Same CV folds** | YOLO26's K-Fold algorithm (NumPy `RandomState(0)`) over the same pool order → **identical folds** (verified against the U-Net manifest; Phase 2 re-derives and checks them). |
-| **Same metrics, ground truth and resolution** | `sam3_seg/segmentation_metrics.py` is a **byte-identical copy** of YOLO26's. The predicted mask (top-1 instance with score ≥ 0.5; ISIC has one lesion per image) is scored at the original dataset resolution against the ground truth of the same polygons. |
+| **Same metrics, ground truth and resolution** | `sam3_seg/segmentation_metrics.py` is a **byte-identical copy** of YOLO26's. The predicted mask (top-1 instance with score ≥ `PIXEL_CONF` = 0.001, the YOLO26 rule; ISIC has one lesion per image) is scored at the original dataset resolution against the ground truth of the same polygons. |
 | **Same selection criterion as the U-Net** | Every phase selects `best.pt` on the validation **per-image mean JSI** (no early stopping: patience = epochs), computed with that same code (YOLO26 selects on the Ultralytics fitness, box + mask mAP50-95). Phase 5 runs the **identical** validation pipeline on the test set (verified: it reproduces the trainer's validation JSI to the last digit). |
 | **Same profiling** | `benchmark_efficiency.py` is derived from YOLO26's: `torch.cuda.Event` timing, statistics, steady-state VRAM, contention checks and JSON schema; same `torch==2.5.1`. |
 
@@ -54,7 +54,7 @@ delete their weights and keep only metrics.
 |---|---|---|---|
 | **0 — Dataset** | COCO dataset from the YOLO26 dataset; per-split and per-fold annotation files; SHA-256 provenance | train / val / test | `prepare_dataset.py` |
 | **1 — Baseline** | Base setup + **official recipe** hyperparameters | train / val | `train_baseline_sam3.py` |
-| **2 — Baseline CV** | 5-fold CV with the Phase 1 configuration; pixel metrics per fold (dataset resolution) | train ∪ val pool (**test excluded and verified**) | `train_cv_sam3.py`, `consolidate_cv_results_sam3.py` |
+| **2 — Baseline CV** | 5-fold CV with the Phase 1 configuration; pixel metrics per fold (dataset resolution) | train ∪ val pool (**test excluded and verified**) | `train_cv_sam3.py`, `consolidate_cv_results_sam3.py`, `evaluate_cv_pixels.py` (each fold's `best.pt` re-scored with the Phase 5 top-1 rule) |
 | **3 — HPO** | Optuna TPE, **seeded per proposal**, fault-tolerant (`hpo_state.json`, exit 75 → retried) | train / val | `tune_sam3.py`, `check_hpo_validity.py` |
 | **4 — Optimised** | Same base setup + Phase 3 hyperparameters | train / val | `train_optimized_sam3.py` |
 | **5 — Test set** | Baseline **and** Optimised: DSC, JSI, ISIC thresholded JSI, sensitivity, specificity, Boundary IoU, NSD, HD95 with bootstrap 95 % CI (FP32 + FP16); batch-1 efficiency — median/P95 latency, FPS, peak VRAM (FP32 + FP16); final report | **test** (only here) | `evaluate_test_set.py`, `benchmark_efficiency.py`, `build_final_report.py` |
@@ -170,7 +170,7 @@ GPU_DEVICE=1 ./wait_gpu_sam3.sh --phases "1 2"   # extra arguments go to run_pip
 
 **Accuracy (`evaluate_test_set.py`)** — test split only, batch 1, FP32 (primary) and FP16. Each run's own
 validation pipeline is rebuilt from its `config.yaml` (official transforms and postprocessor, prompt
-`"skin lesion"`), applied to `annotations/test.json`; per image the top-1 instance with score ≥ 0.5 is
+`"skin lesion"`), applied to `annotations/test.json`; per image the top-1 instance with score ≥ 0.001 (`PIXEL_CONF`, as YOLO26) is
 scored at dataset resolution: DSC, JSI, ISIC thresholded JSI (`JSI < 0.65 → 0`), sensitivity, specificity, accuracy (empty
 prediction → 0, never skipped), Boundary IoU, NSD and HD95 (as YOLO26). Same aggregates and JSON/CSV schema as YOLO26; the Ultralytics-only instance
 metrics are present as `NaN` (the CV and validation tables carry SAM 3's official COCO mAP50-95 in
@@ -247,7 +247,7 @@ sandbox_sam3/
 │   ├── inference.py           # the validation pipeline applied to the test set
 │   ├── segmentation_metrics.py  # byte-identical to YOLO26's
 │   ├── probe_memory.py        # memory / throughput probe
-│   ├── train_baseline_sam3.py  train_cv_sam3.py  consolidate_cv_results_sam3.py
+│   ├── train_baseline_sam3.py  train_cv_sam3.py  consolidate_cv_results_sam3.py  evaluate_cv_pixels.py
 │   ├── tune_sam3.py  check_hpo_validity.py  train_optimized_sam3.py  collect_phase_metrics_sam3.py
 │   ├── evaluate_test_set.py  benchmark_efficiency.py  build_final_report.py
 │   └── legacy/                # previous pipeline scripts (not used)

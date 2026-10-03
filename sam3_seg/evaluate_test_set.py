@@ -10,8 +10,8 @@ touches it:
 * **Pixel metrics** (:mod:`inference`) — per image, batch = 1, through the
   run's own validation pipeline (the one that selected ``best.pt``): official
   transforms (1008 × 1008) and postprocessor, prompt ``"skin lesion"``; the
-  predicted mask is the top-1 (highest-score) instance with score >= 0.5, at the
-  original dataset resolution; scored against the **same official ISIC mask**
+  predicted mask is the top-1 (highest-score) instance with score >= ``PIXEL_CONF``
+  (0.001, as YOLO26), at the original dataset resolution; scored against the **same official ISIC mask**
   as YOLO26 and the U-Net (stored losslessly as RLE in Phase 0) with
   :func:`segmentation_metrics.pixel_scores`: DSC, JSI, ISIC thresholded JSI
   (0.65), sensitivity, specificity, accuracy, Boundary IoU, NSD, HD95.
@@ -69,8 +69,8 @@ from common import (
     utc_now_iso,
 )
 from data import CocoData, ids_fingerprint
-from inference import EVAL_VERSION, SCORE_THRESHOLD, Predictor, evaluate_annotations
-from segmentation_metrics import aggregate_scores
+from inference import EVAL_VERSION, Predictor, evaluate_annotations
+from segmentation_metrics import PIXEL_CONF, aggregate_scores
 from training import RUN_STATE_FILE
 
 #: YOLO26 instance-metric keys (not produced by SAM 3's pixel evaluation → NaN).
@@ -115,7 +115,7 @@ def evaluate_one(variant: str, model_name: str, precision: str, args, device: to
     out_json = paths.phase5_accuracy_json(variant, model_name, precision)
     settings = {
         "weights_sha256": sha256_file(weights), "test_list_sha256": ids_fingerprint(test_ids),
-        "conf": SCORE_THRESHOLD, "imgsz": RESOLUTION, "prompt": PROMPT, "precision": precision,
+        "conf": PIXEL_CONF, "imgsz": RESOLUTION, "prompt": PROMPT, "precision": precision,
         "eval_version": EVAL_VERSION, "dataset": data.fingerprint(),
         "run_config_sha256": sha256_file(run_dir / "config.yaml"),
     }
@@ -156,7 +156,7 @@ def evaluate_one(variant: str, model_name: str, precision: str, args, device: to
         "instance_conf": None,
         "fp16_mode": "torch.autocast(float16), FP32 weights" if precision == "fp16" else None,
         "pixel_metrics": pixel,
-        "pixel_conf": SCORE_THRESHOLD,
+        "pixel_conf": PIXEL_CONF,
         "ultralytics_speed_ms": {"preprocess": math.nan, "inference": mean_ms, "postprocess": math.nan},
         "per_image_csv": str(per_image_csv),
         "mask_dir": str(paths.phase5_mask_dir(variant, model_name)) if save_masks else None,

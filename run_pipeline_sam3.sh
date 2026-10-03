@@ -308,6 +308,10 @@ if has_phase 2; then
         --k-folds "${CV_K_FOLDS}" --seed "${CV_SEED}" "${BUDGET_ARGS[@]}" "${FORCE_ARGS[@]}"
     run_or_die phase2_consolidate python "${SAM3_SEG_DIR}/consolidate_cv_results_sam3.py" \
         --protocol baseline --models "${MODELS[@]}" --project "${PROJECT}"
+    # Each fold's best.pt re-scored with the Phase 5 rule (top-1, PIXEL_CONF), as YOLO26 / U-Net phase2_pixels
+    run_or_die phase2_pixels python "${SAM3_SEG_DIR}/evaluate_cv_pixels.py" \
+        --protocol baseline --models "${MODELS[@]}" --data "${DATA_DIR}" --project "${PROJECT}" \
+        --device "${GPU_DEVICE}" "${FORCE_ARGS[@]}"
 fi
 
 # ---------- Phase 3 — HPO (fault-tolerant, retried on exit 75) --------------

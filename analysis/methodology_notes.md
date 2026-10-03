@@ -60,15 +60,16 @@ output schema. Only the model, its native input size, its default recipe and its
 | | YOLO26-seg (n, s, m, l, x) | U-Net | SAM 3 |
 |---|---|---|---|
 | Family | one-stage instance segmentation (CNN + PSA attention blocks) | encoder–decoder CNN (Keras baseline, ported to PyTorch) | promptable vision–language ("concept") foundation model (ViT) |
-| Parameters (fused) | ≈ 2.7 / 10.4 / 23.6 / 28.0 / 62.8 M (architecture files with the 80-class COCO head; the trained single-class models are slightly smaller, e.g. YOLO26n-seg 2.69 M) — final values in Table 2 | 2,158,705 (2,161,649 unfused) | 840,509,750 (all trainable) |
-| Initialisation | COCO-pretrained Ultralytics checkpoints `yolo26{n,s,m,l,x}-seg.pt`; all layers trainable (transfer learning) | random (Keras initialisers), no pretraining | official SAM 3 checkpoint (`facebook/sam3`); full fine-tuning, text encoder included |
+| Parameters (fused) | ≈ 2.7 / 10.4 / 23.6 / 28.0 / 62.8 M (architecture files with the 80-class COCO head; the trained single-class models are slightly smaller, e.g. YOLO26n-seg 2.69 M) — final values in Table 2 | 2,158,705 (2,161,649 unfused) | 840,509,750 (486.8 M trainable: text encoder frozen, § 5.3) |
+| Initialisation | COCO-pretrained Ultralytics checkpoints `yolo26{n,s,m,l,x}-seg.pt`; all layers trainable (transfer learning) | random (Keras initialisers), no pretraining | official SAM 3 checkpoint (`facebook/sam3`); fine-tuning of everything except the text encoder (frozen: the prompt is constant) |
 | Native input | 640 px (letterbox), single class (`nc = 1`) | 256 × 256 | 1008 × 1008, text prompt "skin lesion" |
 | Training code | Ultralytics 8.4.21 | own (bit-exact resumable) | Meta's official SAM 3 trainer, wrapped (`ProtocolTrainer`), vendored code unmodified |
 | Default recipe (Baseline) | Ultralytics defaults | original Keras baseline | Meta's official fine-tuning recipe |
 | HPO | Ultralytics genetic algorithm (seeded `SeededTuner`), 30 trials × 30 epochs | Optuna TPE (seeded per proposal), 30 × 30 | Optuna TPE (seeded per proposal), 10 × 10 |
 | Training budget (Ph 1, 2, 4) | 120 epochs, no early stopping | 120 epochs, no early stopping | 30 epochs, no early stopping |
+| Training precision | FP32 (`amp = False`) | FP32 | FP16 mixed precision (official AMP path: FP32 master weights, dynamic loss scaling) |
 | Model selection (`best.pt`) | Ultralytics fitness (box + mask mAP50-95) on val; ties → latest epoch | per-image mean JSI on val (at 256 × 256); strict improvement, ties → earliest epoch | per-image mean JSI on val (dataset resolution); strict improvement, ties → earliest epoch |
-| Determinism | deterministic algorithms requested (warn-only); resume not bit-identical | **bit-exact** (incl. resume, any worker count) | bit-exact only in strict mode (verified); study uses warn-only → runs differ by ≤ 6.8 × 10⁻⁵ in the weights |
+| Determinism | deterministic algorithms requested (warn-only); resume not bit-identical | **bit-exact** (incl. resume, any worker count) | bit-exact only in strict mode (verified under the earlier FP32 setup); the study uses warn-only + FP16 AMP → runs are statistically equivalent, not bit-identical |
 
 **Computing environment.** Docker image `nvidia/cuda:12.1.0-devel-ubuntu22.04`, Python 3.11, PyTorch 2.5.1 /
 torchvision 0.20.1 / torchaudio 2.5.1 (CUDA 12.1 builds) in all three arms (§ 10). Training: [YOLO26: one or two
@@ -175,7 +176,9 @@ Every step is orchestrated by one script per repository (`run_pipeline.sh`, `run
    defined once per repository and **protected**: a tuned-hyperparameter file or a search space that tries to change
    a base-setup key is rejected. The HPO effect is therefore isolated in every arm (Table 3), and Baseline and
    Optimized share the architecture and hence the computational cost.
-7. **Same training policy** — FP32 training, fixed seeds (0), **no early stopping** in any phase (§ 4).
+7. **Same training policy** — fixed seeds (0), **no early stopping** in any phase (§ 4). Precision is the one
+   deliberate exception: YOLO26 and the U-Net train in FP32, SAM 3 in FP16 mixed precision with FP32 master weights,
+   for compute (§ 5.3, § 14.5; limitation 12 in § 11).
 8. **Same variant compared** — the cross-architecture comparison uses the variant fixed *a priori* (Optimized,
    Phase 4) for every model, not the better of the two after looking at the test set.
 9. **Same efficiency profiler** — one benchmark design (batch 1, single GPU, fresh process per configuration, same
@@ -398,14 +401,14 @@ to an uninterrupted one.
 
 | Decision | Value | Reason |
 |---|---|---|
-| Model / recipe | official SAM 3 image model and fine-tuning recipe (frozen copy `sam3_base_recipe.yaml`, never edited; per-run configs written to the run folder), **all 840.5 M parameters trainable** (text encoder not frozen) | full fine-tuning, as Meta's recipe |
+| Model / recipe | official SAM 3 image model and fine-tuning recipe (frozen copy `sam3_base_recipe.yaml`, never edited; per-run configs written to the run folder), **486.8 M of 840.5 M parameters trainable**: the 353.7 M-parameter text encoder is **frozen** (`freeze_text`) | the prompt `"skin lesion"` is constant, so the text encoder only ever produces one embedding; the detector layers that consume it stay trainable (§ 14.5) |
 | Prompt | `"skin lesion"` (single category) | clinically neutral (most ISIC lesions are benign; earlier experiments used the misleading "skin cancer") |
 | Input | 1008 × 1008 | fixed by the architecture |
-| Precision / batch | FP32, batch 2, official activation checkpointing, no gradient accumulation | memory probe below |
-| Budget | **30 epochs**, patience 30 (no early stopping) | one FP32 epoch ≈ 1.8 h; 120 epochs would take > 8 days per run and the HPO several months |
+| Precision / batch | **FP16 mixed precision** (`amp`, official recipe path: autocast float16, FP32 master weights, `GradScaler`; the V100 has no BF16), batch 2, activation checkpointing **off** in the ViT and text backbones (still on where the detector requires it), no gradient accumulation | throughput: ≈ 33.5 min per epoch instead of ≈ 1.8 h (§ 14.5); memory probe below |
+| Budget | **30 epochs**, patience 30 (no early stopping) | fixed when one epoch took ≈ 1.8 h (official FP32 setup); 120 epochs would have taken > 8 days per run and the HPO several months |
 | HPO | **10 trials × 10 epochs**, Optuna TPE (Optuna 5.0.0, SQLite), **5** start-up trials, seeded per proposal (same formula as the U-Net) | compute; a foundation model starts from strong weights |
 | Selection | `best.pt` = best validation per-image JSI (strict improvement, ties earliest), the shared metric code | as the U-Net |
-| Prediction rule | **top-1** (highest-score) instance among those with score ≥ 0.5 for Phase 5 and the end-to-end benchmark; the training-time validation JSI that selects `best.pt` (Phases 1–4, including the Phase 2 CV folds) keeps the union rule, so all folds of a phase are selected identically (§ 14.4) (score = sigmoid(logit) × presence; top 100 instances per image as in the official prediction dump) | SAM 3 default threshold |
+| Prediction rule | **top-1** (highest-score) instance among those with score ≥ `PIXEL_CONF` = 0.001 (the YOLO26 rule and constant, shared `segmentation_metrics`) for Phase 5, the Phase 2 pixel re-score of every fold's `best.pt` and the end-to-end benchmark; the training-time validation JSI that selects `best.pt` (Phases 1–4, including the Phase 2 CV folds) keeps the union rule, so all training phases select identically (§ 14.4) (score = sigmoid(logit) × presence; top 100 instances per image as in the official prediction dump) | one lesion per image (ISIC 2018 Task 1); selection keeps SAM 3's default 0.5 |
 
 **Default (official recipe) hyperparameters.** `lr_scale` 0.1, which scales the recipe's base learning rates
 8 × 10⁻⁴ (detector transformer), 2.5 × 10⁻⁴ (vision backbone) and 5 × 10⁻⁵ (text encoder) to the **effective defaults
@@ -451,11 +454,13 @@ Activation checkpointing discards intermediate activations in the forward pass a
 pass: it trades compute for memory and is **numerically neutral** (same values), so it changes neither the optimisation
 nor the results. SAM 3's detector encoder and decoder *require* it during training (they assert it), so it can only be
 disabled in the two backbones; with it, the official batch of 2 runs in FP32 at about half the GPU memory without
-freezing any component and without gradient accumulation.
+freezing any component and without gradient accumulation. *The probe describes the official FP32 setup. The final
+setup (§ 14.5) adds FP16 AMP and freezes the text encoder, which frees enough memory to switch the backbone
+checkpointing off: ≈ 26.9 GB peak, ≈ 2,012 s per epoch.*
 
-**Compute.** ≈ 1.8 h per epoch including validation and checkpointing — about two orders of magnitude more than the
-U-Net. Worst case (V100S, FP32): Phase 1 ≈ 55 h, Phase 2 ≈ 5 × 47 h, Phase 3 ≈ 10 × 18 h, Phase 4 ≈ 55 h — about three
-weeks on one GPU (Phases 2 and 3 are independent and can run in parallel on two GPUs).
+**Compute.** Official FP32 setup: ≈ 1.8 h per epoch (≈ 3 weeks for Phases 1–4 on one GPU). Final setup (§ 14.5):
+≈ 33.5 min per epoch including validation and checkpointing (SD < 6 s; Phase 1 = 1,012.6 min) — still about two orders
+of magnitude more than the U-Net.
 
 ---
 
@@ -592,7 +597,9 @@ weeks on one GPU (Phases 2 and 3 are independent and can run in parallel on two 
   mechanism itself is exact. **In the warn-only mode used by the study**, the remaining nondeterministic attention
   backward makes two identical runs differ by **up to 6.8 × 10⁻⁵ in the weights after 3 epochs** and in the 5th decimal of
   the validation JSI. Repeated or resumed SAM 3 runs are therefore **statistically equivalent, not bit-identical**; the
-  thesis must not claim bit-exact reproducibility for SAM 3.
+  thesis must not claim bit-exact reproducibility for SAM 3. *These measurements predate the final setup (§ 14.5): FP16
+  AMP adds dynamic loss scaling, so the 6.8 × 10⁻⁵ bound is not re-measured for it — quote only "statistically
+  equivalent".*
 * **Run lifecycle and isolation.** Each training run is a separate process (`run_training.py`), so a CUDA error or OOM
   cannot take down the HPO driver; `run_state.json` records status, protocol and protocol hash, data fingerprints and
   events (atomic writes); a completed run is skipped, a changed protocol or dataset is refused, an exclusive POSIX lock
@@ -602,9 +609,10 @@ weeks on one GPU (Phases 2 and 3 are independent and can run in parallel on two 
   (official transforms and post-processor) and applies it to the test split; applied to the validation images it
   reproduces the trainer's own validation JSI to the last digit (0.6277150682843381 in both, in the preliminary check) —
   the test metric is the same function of the model as the selection metric. SAM 3 is an **instance/concept model
-  evaluated as a semantic segmenter** (top-1 instance with score ≥ 0.5 at test time; union during model selection —
-  § 14.4) — state it. Since `EVAL_VERSION` 4 the test metric uses top-1, so the "same function as the selection
-  metric" identity above holds for the union rule only; the two rules differ by ≤ 0.003 JSI on the checked splits.
+  evaluated as a semantic segmenter** (top-1 instance with score ≥ 0.001 at test time and in the Phase 2 pixel re-score;
+  union of instances ≥ 0.5 during model selection — § 14.4) — state it. Since `EVAL_VERSION` 4 the test metric uses
+  top-1, so the "same function as the selection metric" identity above holds for the union rule only; the two rules
+  differ by ≤ 0.003 JSI on the checked splits.
 * **Parameters by component:** vision backbone 454.0 M, text encoder 353.7 M, detector transformer 21.0 M, geometry
   encoder 8.2 M, segmentation head 2.3 M, scoring 1.2 M; without the text encoder 486.8 M. With a fixed prompt the text
   features can be cached: `forward_cached_text` measures that deployment form.
@@ -648,7 +656,8 @@ weeks on one GPU (Phases 2 and 3 are independent and can run in parallel on two 
 ## 7. Evaluation metrics and statistics (Phase 5a)
 
 Every combination variant (Baseline, Optimized) × model × precision (FP32, FP16) is evaluated on the test split with
-batch 1. FP32 is the primary result (all models were trained in FP32); FP16 quantifies the accuracy cost of
+batch 1. FP32 is the primary result (YOLO26 and the U-Net were trained in FP32, SAM 3 in FP16 mixed precision with
+FP32 master weights); FP16 quantifies the accuracy cost of
 half-precision deployment and is read with the FP16 efficiency results — its accuracy is measured, not assumed.
 
 ### 7.1 Per-image metrics (`segmentation_metrics.py`, identical in the three repositories)
@@ -789,7 +798,7 @@ sizes are distinguished by direct labels (n, s, m, l, x).
   | Arm | Guarantee | Mechanism / residual source |
   |---|---|---|
   | U-Net | **bit-exact**: repeated runs and resumed runs identical, independent of the worker count | per-(seed, epoch, sample) generators, per-loader generator, RNG-complete checkpoints; no nondeterministic op reported |
-  | SAM 3 | bit-exact **in strict mode** (verified); the study uses warn-only → statistically equivalent runs (≤ 6.8 × 10⁻⁵ in the weights after 3 epochs, 5th decimal of val JSI) | RNG-complete checkpoints after validation, deterministic `grid_sample`; residual: ViT memory-efficient attention backward (strict mode +33 % time) |
+  | SAM 3 | bit-exact **in strict mode** (verified under the earlier FP32 setup); the study uses warn-only + FP16 AMP → statistically equivalent runs (≤ 6.8 × 10⁻⁵ in the weights after 3 epochs in FP32; not re-measured with AMP) | RNG-complete checkpoints after validation, deterministic `grid_sample`; residual: ViT memory-efficient attention backward (strict mode +33 % time) |
   | YOLO26 | deterministic algorithms requested (warn-only); a resumed run is **not** bit-identical | dataloader RNG not checkpointed by Ultralytics; ops without deterministic kernels and DDP reduction order; HPO proposals reproducible conditional on the fitness values (`SeededTuner`) |
 
 * **Provenance:** SHA-256 of datasets, splits, weights and settings in every output; Phase 5 results recomputed exactly
@@ -817,9 +826,14 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 6. **Hardware dependence of latency** — absolute numbers are for the reported GPU (V100S) and software stack; ratios
    between models are more portable than absolute values. No CPU or embedded-GPU (e.g. Jetson) measurement is part of
    the protocol; claims about such devices must be framed as extrapolations from measured VRAM and latency.
-7. **FP16 paths differ** (`.half()` for the CNNs, autocast for SAM 3).
-8. **Model classes differ** — YOLO26 and SAM 3 are instance/concept models evaluated as semantic segmenters (union of
-   instances above a score threshold); the U-Net is a single-width network (no size family).
+7. **FP16 paths differ** (`.half()` for the CNNs, autocast for SAM 3) — and so does training precision: SAM 3 trains in
+   FP16 AMP with its text encoder frozen (§ 14.5), the CNNs in FP32. No matched FP32 / unfrozen SAM 3 run exists, so
+   the effect of these choices on SAM 3's accuracy is not measured (bias direction unknown; AMP with FP32 master
+   weights is the official recipe setting).
+8. **Model classes differ** — YOLO26 and SAM 3 are instance/concept models evaluated as semantic segmenters (their
+   top-1 instance, which relies on the one-lesion-per-image property of ISIC 2018 Task 1 — the rule cannot express
+   "no lesion"); the U-Net's dense mask is scored as predicted (no connected-component filtering); the U-Net is a
+   single-width network (no size family).
 9. **Single dataset** (ISIC 2018 Task 1, dermoscopy); generalisation to other datasets or modalities is not tested.
 10. **Single training seed** per configuration; variability is estimated by the 5-fold CV (whose folds are not
     independent), not by repeated seeds.
@@ -864,9 +878,9 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 > cannot count).
 
 > **Reproducibility (per arm).** *"The U-Net training is bit-exactly reproducible, including after interruption. SAM 3
-> training is deterministic except for the backward pass of the vision transformer's memory-efficient attention;
-> repeated runs differ by at most 7 × 10⁻⁵ in the weights (bit-exactness was verified in PyTorch's strict deterministic
-> mode, which was not used for the experiments because it increases training time by 33 %). YOLO26 training uses the
+> training (FP16 mixed precision) is not bit-exactly reproducible: the vision transformer's memory-efficient attention
+> has a nondeterministic backward pass, and repeated runs are statistically equivalent (bit-exactness of the
+> checkpoint/resume mechanism was verified in PyTorch's strict deterministic mode with FP32 training). YOLO26 training uses the
 > framework's deterministic mode; interrupted runs are resumable but not bit-identical."*
 
 ---
@@ -920,9 +934,10 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 10. **Validation-metric resolution of the U-Net** (256 × 256 for selection).
 11. **Deliberate differences from the original Keras training** (binary mask augmentation, per-epoch reshuffle, BCE
     from logits).
-12. **Reduced SAM 3 budget; FP16 = autocast for SAM 3; GFLOPs counters differ** (state in the efficiency table).
-13. **SAM 3 evaluated as a semantic segmenter** — prompt "skin lesion", top-1 instance with score ≥ 0.5 at test time
-    (union of instances with score ≥ 0.5 for checkpoint selection; § 14.4).
+12. **Reduced SAM 3 budget; SAM 3 trained in FP16 AMP with the text encoder frozen (§ 14.5); FP16 = autocast for
+    SAM 3; GFLOPs counters differ** (state in the efficiency table).
+13. **SAM 3 evaluated as a semantic segmenter** — prompt "skin lesion", top-1 instance with score ≥ 0.001 at test time
+    and in the Phase 2 pixel re-score (union of instances with score ≥ 0.5 for checkpoint selection; § 14.4).
 14. **Reproducibility statement per arm** (§ 10, § 12) — never claim bit-exactness for SAM 3 or YOLO26.
 15. **Multiple comparisons** — Holm for joint claims across models (automatic in the cross-architecture tables; to be
     applied by hand to the per-model HPO p-values if they are claimed jointly).
@@ -956,9 +971,9 @@ sizes are distinguished by direct labels (n, s, m, l, x).
   Union at 0.001: no empty masks, but background instances merged into the mask (specificity 0.81–0.89), JSI
   0.706–0.799. Top-1 at 0.001: no empty masks, JSI 0.793–0.817 (nano 0.817 / DSC 0.891).
 * **Disclosure:** the rule was chosen after seeing these validation results, but **before** any Phase 2 pixel-level
-  or Phase 5 test-set evaluation. Confirm on the CV folds before reporting. `segmentation_metrics.py` is therefore no
-  longer byte-identical across the three repositories (YOLO26 only: `PIXEL_CONF`, `predicted_top1_mask`); the
-  U-Net (dense, no instances) is unaffected.
+  or Phase 5 test-set evaluation. Confirm on the CV folds before reporting. The U-Net (dense, no instances) is
+  unaffected. `segmentation_metrics.py` is **byte-identical again** in the three repositories (re-synchronised
+  2026-10-03: `PIXEL_CONF` and `predicted_top1_mask` are now in every copy; the scoring functions never differed).
 * **SAM 3 aligned (2026-10-03):** `inference.evaluate_annotations` (Phase 5) and the `end_to_end` benchmark now keep
   the **top-1 instance among those with score ≥ 0.5** (SAM 3's own threshold is unchanged). `EVAL_VERSION` 3 → 4 and
   SAM 3 `BENCHMARK_VERSION` 2 → 3. **Not changed:** `protocol_trainer.pixel_metrics_from_dump`, the training-time
@@ -966,8 +981,31 @@ sizes are distinguished by direct labels (n, s, m, l, x).
   running when the rule was adopted and changing it would have selected fold 0 and folds 1–4 under different rules.
   Measured impact (CPU, from the saved prediction dumps): Phase 1 validation (n = 100; 3 images with > 1 instance)
   union JSI 0.8553 = top-1 0.8553; Phase 2 fold 0 (n = 539; 23 images with > 1 instance) union 0.8415 vs top-1
-  0.8439 (+0.0024). The asymmetry is therefore negligible but must be disclosed: SAM 3's CV row uses union,
-  its test row top-1.
+  0.8439 (+0.0024).
+* **Unified (2026-10-03, later):** (1) SAM 3's top-1 candidates use the shared `PIXEL_CONF` = 0.001 instead of 0.5,
+  so both instance models apply literally the same rule ("the single highest-scoring instance") and SAM 3 cannot be
+  penalised with an empty mask that YOLO26's rule would never produce (`EVAL_VERSION` 4 → 5, `BENCHMARK_VERSION`
+  3 → 4). On every validation image so far SAM 3's best score is ≥ 0.54, so 0.5 and 0.001 give identical masks (Phase 1
+  val and fold 0: 0 images below 0.5). (2) New `sam3_seg/evaluate_cv_pixels.py` (pipeline step `phase2_pixels`, as
+  YOLO26 / U-Net) re-scores each fold's `best.pt` on its held-out fold through the Phase 5 path, and
+  `build_final_report.py` uses it for the CV row (fallback: training-time union values + a warning). Once it has run,
+  SAM 3's CV and test rows use the same rule; only checkpoint *selection* keeps the union rule, consistently in
+  Phases 1–4 (like YOLO26's mAP-based selection, a training-internal criterion). The Phase 2 run in progress was not
+  restarted: selection is unchanged, so restarting would not change any reported number.
+
+### 14.5 SAM 3 training setup for throughput (2026-10-02, before Phase 1)
+
+* **Change** (`sam3_seg/common.py` `BASE_SETUP`, protocol-hashed): `amp = True` (float16 — the official recipe's
+  mixed-precision path; FP32 master weights and dynamic loss scaling; the V100 has no BF16), `freeze_text = True`
+  (353.7 M text-encoder parameters frozen → 486.8 M of 840.5 M trainable), `act_ckpt = False` in the ViT and text
+  backbones (numerically neutral). Committed 13:46 UTC, Phase 1 started 13:52 UTC: **every SAM 3 phase uses it**.
+* **Why:** the official FP32 setup ran at 5.3 s per step (≈ 1.9 h per epoch, ≈ 25 days for Phases 1–4). Final setup:
+  ≈ 2,012 s per epoch (SD < 6 s; ≈ 3.4×), peak ≈ 26.9 GB of 32 GB, 0 overflow/NaN events and 0 empty predictions in
+  Phase 1.
+* **Disclosure:** no matched FP32 / unfrozen control exists under the final protocol, so the speed-up is relative to
+  the earlier probe and the accuracy effect is unmeasured (§ 11, item 7). Freezing the text encoder with a constant
+  prompt removes only the ability to move one prompt embedding; the layers that consume it remain trainable.
+  `val_loss` is logged as 0 by design (the official validation computes no loss) — treat it as missing.
 
 ---
 

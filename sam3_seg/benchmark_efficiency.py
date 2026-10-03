@@ -21,7 +21,8 @@ from them; only the model-specific parts differ). For every ``variant`` ×
     test image (dataset resolution): host→device copy, resize to 1008, normalisation,
     image + text encoding, detection, score = sigmoid × presence, bilinear
     mask upsampling to dataset resolution, sigmoid > 0.5, the top-1 (highest-score)
-    instance among those with score > 0.5 and device→host copy of the binary mask. Timed with
+    instance among those with score >= ``PIXEL_CONF`` (0.001, as scored in Phase 5a and
+    as YOLO26) and device→host copy of the binary mask. Timed with
     ``time.perf_counter`` around a synchronised call (it includes CPU work).
   - ``end_to_end_dataset``: the same pipeline once on each of the first
     ``--e2e-images`` (default 100) test images, sorted by ISIC ID (the same
@@ -117,7 +118,8 @@ PRECISIONS: tuple[str, ...] = ("fp32", "fp16")
 #: what or how this script measures changes, so stale results are recomputed.
 #: 2: + end_to_end_dataset scope; + driver-level process VRAM (as YOLO26 / U-Net).
 #: 3: end_to_end mask = top-1 instance (was union), as scored in Phase 5a.
-BENCHMARK_VERSION: int = 3
+#: 4: top-1 candidates >= PIXEL_CONF (0.001; was 0.5), as scored in Phase 5a.
+BENCHMARK_VERSION: int = 4
 
 #: GPU utilisation (%) above which a run is flagged as contended.
 CONTENTION_UTIL_PCT: int = 5
@@ -222,7 +224,8 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
     import torch
     from torchvision.transforms import v2
 
-    from inference import SCORE_THRESHOLD, autocast, build_model, load_run_config
+    from inference import autocast, build_model, load_run_config
+    from segmentation_metrics import PIXEL_CONF
     from sam3.model.sam3_image_processor import Sam3Processor
 
     torch.manual_seed(SEED)
@@ -253,7 +256,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
     params_by_component["other"] = params - sum(params_by_component.values())
 
     image = PIL.Image.open(args.sample_image).convert("RGB")
-    processor = Sam3Processor(model, resolution=RESOLUTION, device="cuda", confidence_threshold=SCORE_THRESHOLD)
+    processor = Sam3Processor(model, resolution=RESOLUTION, device="cuda", confidence_threshold=PIXEL_CONF)
     x = processor.transform(v2.functional.to_image(image).to(dev)).unsqueeze(0)   # 1×3×1008×1008
     find_stage = processor.find_stage
 

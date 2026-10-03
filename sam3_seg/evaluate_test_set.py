@@ -10,7 +10,7 @@ touches it:
 * **Pixel metrics** (:mod:`inference`) — per image, batch = 1, through the
   run's own validation pipeline (the one that selected ``best.pt``): official
   transforms (1008 × 1008) and postprocessor, prompt ``"skin lesion"``; the
-  predicted mask is the union of the instances with score >= 0.5, at the
+  predicted mask is the top-1 (highest-score) instance with score >= 0.5, at the
   original dataset resolution; scored against the **same official ISIC mask**
   as YOLO26 and the U-Net (stored losslessly as RLE in Phase 0) with
   :func:`segmentation_metrics.pixel_scores`: DSC, JSI, ISIC thresholded JSI

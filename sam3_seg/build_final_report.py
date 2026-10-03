@@ -98,8 +98,8 @@ PROTOCOL_NOTES: list[str] = [
     "algorithms; the ViT memory-efficient attention backward stays nondeterministic (strict mode "
     "costs +33 % time) — repeated runs differ by <= ~1e-4 (weights) / 5th digit (val JSI).",
     "FP16 = torch.autocast(float16) with FP32 weights (SAM 3's official mixed-precision path).",
-    f"Prompt '{BASE_SETUP['prompt']}', input {BASE_SETUP['resolution']} px, predicted mask = union of "
-    f"instances with score >= {BASE_SETUP['score_threshold']}.",
+    f"Prompt '{BASE_SETUP['prompt']}', input {BASE_SETUP['resolution']} px, predicted mask = top-1 "
+    f"instance with score >= {BASE_SETUP['score_threshold']} (test; union of those instances for model selection).",
 ]
 PIXEL_KEYS: tuple[str, ...] = ("dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy", "biou", "nsd", "hd95")
 

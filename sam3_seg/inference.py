@@ -14,9 +14,11 @@ the same function of the model:
 2. per image (batch = 1) the predictions are converted to COCO records as the
    official ``PredictionDumper`` does (scores rounded to 5 decimals, top
    ``maxdets`` = 100 per image);
-3. the predicted binary mask is the **union of the instance masks with score
-   >= 0.5** (:data:`common.BASE_SETUP` ``score_threshold``), as in
-   :func:`protocol_trainer.pixel_metrics_from_dump`, and is scored against the
+3. the predicted binary mask is the **highest-scoring instance mask (top-1)
+   among those with score >= 0.5** (:data:`common.BASE_SETUP` ``score_threshold``)
+   — ISIC 2018 Task 1 has exactly one lesion per image, so lower-ranked
+   instances are never merged (same rule as YOLO26's pixel evaluation) — and is
+   scored against the
    ground truth with :func:`segmentation_metrics.pixel_scores` — the code shared
    with YOLO26 and the U-Net. The ground truth is the union of the image's
    COCO RLE masks, encoded losslessly in Phase 0 from the **official ISIC mask**
@@ -48,9 +50,9 @@ from protocol_trainer import union_masks
 from segmentation_metrics import pixel_scores
 
 #: Version of the evaluation method (part of the result cache keys).
-EVAL_VERSION: int = 3   # 2: + boundary metrics (BIoU, NSD); 3: + HD95
+EVAL_VERSION: int = 4   # 2: + boundary metrics (BIoU, NSD); 3: + HD95; 4: top-1 mask (was union)
 
-#: Instance score threshold of the merged binary mask (as in validation).
+#: Instance score threshold of the candidate masks (as in validation); the top-1 is scored.
 SCORE_THRESHOLD: float = float(BASE_SETUP["score_threshold"])
 
 _RESOLVERS_REGISTERED = False
@@ -183,8 +185,8 @@ def evaluate_annotations(
             im = images[img_id]
             h, w = im["height"], im["width"]
             recs = by_image.get(img_id, [])
-            kept = [r["segmentation"] for r in recs if r["score"] >= SCORE_THRESHOLD]
-            pred = union_masks(kept, h, w)
+            kept = [r for r in recs if r["score"] >= SCORE_THRESHOLD]
+            pred = union_masks([max(kept, key=lambda r: r["score"])["segmentation"]] if kept else [], h, w)
             if mask_dir is not None:
                 cv2.imwrite(str(Path(mask_dir) / f"{Path(im['file_name']).stem}.png"), pred.astype(np.uint8) * 255)
             rows.append({"image": str(Path(image_dir) / im["file_name"]), "height": h, "width": w,

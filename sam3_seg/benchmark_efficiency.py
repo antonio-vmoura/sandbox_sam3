@@ -20,8 +20,8 @@ from them; only the model-specific parts differ). For every ``variant`` ×
   - ``end_to_end``: Meta's deployment API (``Sam3Processor``) on the decoded
     test image (dataset resolution): host→device copy, resize to 1008, normalisation,
     image + text encoding, detection, score = sigmoid × presence, bilinear
-    mask upsampling to dataset resolution, sigmoid > 0.5, union of the instances with
-    score > 0.5 and device→host copy of the binary mask. Timed with
+    mask upsampling to dataset resolution, sigmoid > 0.5, the top-1 (highest-score)
+    instance among those with score > 0.5 and device→host copy of the binary mask. Timed with
     ``time.perf_counter`` around a synchronised call (it includes CPU work).
   - ``end_to_end_dataset``: the same pipeline once on each of the first
     ``--e2e-images`` (default 100) test images, sorted by ISIC ID (the same
@@ -116,7 +116,8 @@ PRECISIONS: tuple[str, ...] = ("fp32", "fp16")
 #: Version of the measurement method. Part of the cache key: bump it whenever
 #: what or how this script measures changes, so stale results are recomputed.
 #: 2: + end_to_end_dataset scope; + driver-level process VRAM (as YOLO26 / U-Net).
-BENCHMARK_VERSION: int = 2
+#: 3: end_to_end mask = top-1 instance (was union), as scored in Phase 5a.
+BENCHMARK_VERSION: int = 3
 
 #: GPU utilisation (%) above which a run is flagged as contended.
 CONTENTION_UTIL_PCT: int = 5
@@ -319,7 +320,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         with torch.inference_mode(), autocast(args.precision):
             state = processor.set_image(img)
             state = processor.set_text_prompt(PROMPT, state)
-            mask = state["masks"].any(dim=0)[0] if len(state["masks"]) else torch.zeros(
+            mask = state["masks"][state["scores"].argmax()][0] if len(state["masks"]) else torch.zeros(
                 img.size[1], img.size[0], dtype=torch.bool, device=dev)
             return mask.cpu().numpy()
 

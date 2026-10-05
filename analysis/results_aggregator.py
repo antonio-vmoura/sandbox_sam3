@@ -808,6 +808,110 @@ def fig_memory(sel: pd.DataFrame, save=None):
 
 
 # ---------------------------------------------------------------------------
+# Phase 1 side by side (validation, before any test-set evaluation)
+# ---------------------------------------------------------------------------
+#: Columns of the Phase 1 figure: (architecture, model) as exported by each repository's
+#: ``export_phase1_val_masks.py`` into ``logs/<pipeline>/phase1_val_masks/<model>/``.
+PHASE1_COLUMNS: tuple[tuple[str, str], ...] = (("unet", "unet"), ("yolo26", "nano"), ("sam3", "sam3"))
+
+
+def phase1_masks(root: Path, pipeline_name: str = "pipeline_final_v1",
+                 columns: Iterable[tuple[str, str]] = PHASE1_COLUMNS) -> list[dict[str, Any]]:
+    """Exported Phase 1 validation masks that exist (one dict per column; missing columns are skipped)."""
+    out = []
+    for arch, model in columns:
+        repo = _child_ci(root, ARCH_BY_KEY[arch].repo)
+        d = repo / "logs" / pipeline_name / "phase1_val_masks" / model if repo else None
+        if d is None or not (d / "per_image.csv").exists():
+            continue
+        meta = json.loads((d / "meta.json").read_text()) if (d / "meta.json").exists() else {}
+        out.append({"arch": arch, "model": model, "dir": d, "meta": meta,
+                    "label": meta.get("label", SYSTEM_NAMES.get((arch, model), model)),
+                    "scores": pd.read_csv(d / "per_image.csv").set_index("id")})
+    return out
+
+
+def fig_phase1_side_by_side(root: Path, pipeline_name: str = "pipeline_final_v1", n_random: int = 3,
+                            n_disagree: int = 3, seed: int = 0, save=None):
+    """Image | ground truth | each model's Phase 1 mask on the official validation split.
+
+    Rows: ``n_random`` images drawn with ``seed`` and the ``n_disagree`` images with the largest JSI spread
+    between the models. Overlays as notebook 02: ground truth green (solid border), prediction red (dashed
+    border), overlap yellow. Returns ``None`` when no mask set has been exported yet.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgb
+    from matplotlib.patches import Patch
+
+    sets = phase1_masks(root, pipeline_name)
+    yolo_repo = _child_ci(root, "sandbox_yolo26")
+    data = yolo_repo / "datasets" / "isic2018_task1_official" / "valid" if yolo_repo else None
+    if not sets or data is None or not data.is_dir():
+        return None
+    ids = sorted(set.intersection(*(set(s["scores"].index) for s in sets)))
+    jsi = pd.DataFrame({s["label"]: s["scores"].loc[ids, "jsi"] for s in sets}, index=ids)
+    rng = np.random.default_rng(seed)
+    rows = [(i, "random") for i in rng.choice(ids, size=min(n_random, len(ids)), replace=False)]
+    spread = (jsi.max(axis=1) - jsi.min(axis=1)).drop(index=[i for i, _ in rows])
+    rows += [(i, "largest disagreement") for i in spread.nlargest(n_disagree).index]
+
+    gt_c, pred_c, both_c, alpha = "#00c853", "#ff1744", "#ffd600", 0.40
+
+    def overlay(ax, img, gt, pred, title, color=INK):
+        base = np.repeat(0.4 + 0.6 * img.mean(axis=2, keepdims=True), 3, axis=2)
+        regions = [(gt, gt_c)] if pred is None else [(gt & ~pred, gt_c), (pred & ~gt, pred_c), (gt & pred, both_c)]
+        for region, c in regions:
+            base[region] = (1 - alpha) * base[region] + alpha * np.array(to_rgb(c))
+        ax.imshow(base)
+        if gt.any():
+            ax.contour(gt.astype(float), levels=[0.5], colors=[gt_c], linewidths=1.0)
+        if pred is not None and pred.any():
+            ax.contour(pred.astype(float), levels=[0.5], colors=[pred_c], linewidths=1.0, linestyles="dashed")
+        ax.set_title(title, fontsize=7, color=color)
+        ax.axis("off")
+
+    def read_png(path: Path) -> np.ndarray:
+        a = plt.imread(str(path))
+        return a[..., :3] if a.ndim == 3 else a
+
+    ncol = 2 + len(sets)
+    fig, axes = plt.subplots(len(rows), ncol, figsize=(1.5 * ncol, 1.45 * len(rows)), squeeze=False)
+    for ax_row, (iid, why) in zip(axes, rows):
+        img = read_png(next(data.joinpath("images").glob(f"{iid}.*")))
+        gt = read_png(data / "masks" / f"{iid}.png")
+        gt = (gt if gt.ndim == 2 else gt.max(axis=2)) > 0.5
+        ax_row[0].imshow(img)
+        ax_row[0].set_title(f"{iid}\n({why})", fontsize=6)
+        ax_row[0].axis("off")
+        overlay(ax_row[1], img, gt, None, "ground truth")
+        for ax, s in zip(ax_row[2:], sets):
+            m = read_png(s["dir"] / "masks" / f"{iid}.png")
+            pred = (m if m.ndim == 2 else m.max(axis=2)) > 0.5
+            overlay(ax, img, gt, pred, f"{s['label']}\nJSI {s['scores'].loc[iid, 'jsi']:.3f}",
+                    ARCH_BY_KEY[s["arch"]].color)
+    fig.legend(handles=[Patch(facecolor=gt_c, alpha=alpha, label="ground truth only (FN)"),
+                        Patch(facecolor=pred_c, alpha=alpha, label="prediction only (FP)"),
+                        Patch(facecolor=both_c, alpha=alpha, label="overlap (TP)")],
+               loc="lower center", ncol=3, fontsize=7, bbox_to_anchor=(0.5, -0.01))
+    means = ", ".join(f"{s['label']} {s['scores']['jsi'].mean():.3f}" for s in sets)
+    fig.suptitle(f"Phase 1 (Baseline), official validation split; mean JSI over {len(ids)} images: {means}",
+                 x=0.01, ha="left", fontsize=8, fontweight="semibold")
+    fig.tight_layout(rect=(0, 0.03, 1, 0.97))
+    if save:
+        save(fig, "fig0_phase1_side_by_side")
+    return fig
+
+
+def save_to(out: Path):
+    """``save(fig, name)`` callable writing PDF + 300-dpi PNG into ``out`` (created on first use)."""
+    def _save(fig, name: str) -> None:
+        out.mkdir(parents=True, exist_ok=True)
+        for ext in ("pdf", "png"):
+            fig.savefig(out / f"{name}.{ext}", bbox_inches="tight", dpi=300)
+    return _save
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 @dataclass

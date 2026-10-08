@@ -9,9 +9,12 @@ the ground-truth and the predicted lesion masks, which is computed here:
   when the dataset has one; otherwise every polygon of the YOLO label file,
   rasterised at the image resolution (:func:`rasterize_yolo_label`) and
   merged (union).
-* **Prediction** — the union of every predicted instance mask with
-  confidence ``>= conf``, produced at the original resolution
-  (``retina_masks=True``) (:func:`predicted_union_mask`).
+* **Prediction** — the mask of the single highest-confidence instance among
+  those with confidence ``>= conf`` (:data:`PIXEL_CONF` = 0.001), produced at
+  the original resolution (``retina_masks=True``) (:func:`predicted_top1_mask`).
+  ISIC 2018 Task 1 has exactly one lesion per image, so lower-ranked instances
+  are background artefacts and are never merged into the lesion mask.
+  :func:`predicted_union_mask` is kept for diagnostics only.
 * **Per-image scores** (:func:`pixel_scores`) from the confusion counts
   TP / FP / FN / TN:
 
@@ -68,6 +71,11 @@ from typing import Any, Iterable
 
 import cv2
 import numpy as np
+
+#: Confidence threshold of the pixel-level evaluation (Phase 2 pixels, Phase 5, end-to-end latency).
+#: With :func:`predicted_top1_mask` a low threshold only guarantees that the primary lesion is never
+#: dropped; it cannot add false-positive instances to the mask.
+PIXEL_CONF: float = 0.001
 
 #: ISIC 2018 Task 1 threshold for the thresholded Jaccard index.
 ISIC_JSI_THRESHOLD: float = 0.65
@@ -183,8 +191,33 @@ def rasterize_yolo_label(label_path: Path, height: int, width: int, class_id: in
     return mask.astype(bool)
 
 
+def predicted_top1_mask(result: Any, height: int, width: int) -> np.ndarray:
+    """Mask of the highest-confidence predicted instance of one Ultralytics ``Results``.
+
+    The pixel-evaluation rule for single-lesion data (ISIC 2018 Task 1): exactly one
+    lesion per image, so only the top-ranked instance is the lesion and the others are
+    discarded instead of merged. The argmax is explicit because YOLO26 is NMS-free and
+    its output order is not guaranteed. The prediction must have been made with
+    ``retina_masks=True``. No detection → empty mask.
+
+    Returns:
+        ``bool`` array of shape ``(height, width)``.
+    """
+    if result.masks is None or len(result.masks) == 0:
+        return np.zeros((height, width), dtype=bool)
+    top = int(result.boxes.conf.argmax())
+    mask = result.masks.data[top].cpu().numpy() > 0.5
+    if mask.shape != (height, width):  # defensive: never expected with retina_masks
+        mask = cv2.resize(mask.astype(np.uint8), (width, height),
+                          interpolation=cv2.INTER_NEAREST).astype(bool)
+    return mask
+
+
 def predicted_union_mask(result: Any, height: int, width: int) -> np.ndarray:
-    """Union of all predicted instance masks of one Ultralytics ``Results``.
+    """Union of all predicted instance masks of one Ultralytics ``Results`` (diagnostics only).
+
+    Not used for evaluation: on single-lesion data the union merges low-confidence
+    background instances into the lesion mask (see :func:`predicted_top1_mask`).
 
     The prediction must have been made with ``retina_masks=True`` so masks are
     already at the original resolution. No detection → empty mask.
@@ -347,12 +380,12 @@ def evaluate_images(
     device: Any,
     mask_dir: Path | None = None,
 ) -> list[dict[str, Any]]:
-    """Predict every image (batch=1) and score it against its YOLO label.
+    """Predict every image (batch=1) and score its top-1 instance mask against the ground truth.
 
     Args:
         model: An Ultralytics ``YOLO`` segmentation model.
         images: Image paths; labels are found via :func:`label_path_for`.
-        conf: Confidence threshold for the instances merged into the mask.
+        conf: Confidence threshold of the candidate instances (:data:`PIXEL_CONF`).
         imgsz: Inference size.
         half: FP16 inference.
         device: Ultralytics device argument.
@@ -375,7 +408,7 @@ def evaluate_images(
         )[0]
         infer_ms = (time.perf_counter() - t0) * 1000
         h, w = result.orig_shape
-        pred = predicted_union_mask(result, h, w)
+        pred = predicted_top1_mask(result, h, w)
         gt = ground_truth_mask(img_path, h, w)
         if mask_dir is not None:
             cv2.imwrite(str(Path(mask_dir) / f"{Path(img_path).stem}.png"),

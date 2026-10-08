@@ -98,8 +98,8 @@ PROTOCOL_NOTES: list[str] = [
     "algorithms; the ViT memory-efficient attention backward stays nondeterministic (strict mode "
     "costs +33 % time) — repeated runs differ by <= ~1e-4 (weights) / 5th digit (val JSI).",
     "FP16 = torch.autocast(float16) with FP32 weights (SAM 3's official mixed-precision path).",
-    f"Prompt '{BASE_SETUP['prompt']}', input {BASE_SETUP['resolution']} px, predicted mask = union of "
-    f"instances with score >= {BASE_SETUP['score_threshold']}.",
+    f"Prompt '{BASE_SETUP['prompt']}', input {BASE_SETUP['resolution']} px, predicted mask = top-1 "
+    f"instance with score >= {BASE_SETUP['score_threshold']} (test; union of those instances for model selection).",
 ]
 PIXEL_KEYS: tuple[str, ...] = ("dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy", "biou", "nsd", "hd95")
 
@@ -205,7 +205,12 @@ class Report:
 
     # ---- Phase 2 (CV) -------------------------------------------------------
     def cross_validation(self) -> None:
-        """Collect CV metrics and the CV pixel metrics (mean ± sample std; already at dataset resolution)."""
+        """Collect CV metrics and the CV pixel metrics (mean ± sample std; dataset resolution).
+
+        The CV pixel row comes from ``pixel_metrics_summary.json`` (``evaluate_cv_pixels.py``: each fold's
+        ``best.pt`` re-scored with the Phase 5 top-1 rule, as YOLO26 / U-Net); without it, it falls back to the
+        training-time validation metrics of the best epochs (union rule) and records a warning.
+        """
         pixel_rows = []
         for m in self.models:
             root = self.paths.cv_model_dir(m, "baseline")
@@ -219,8 +224,13 @@ class Report:
                     v = inst["summary"].get(k, {})
                     self.add("phase2", "baseline", m, "cv", "fp32", k, v.get("mean"), v.get("std"), n=inst["n_folds"])
                 row = {"model": m, "n_folds": inst["n_folds"]}
+                pix = read_json(root / "pixel_metrics_summary.json")
+                if pix is None:
+                    self.warnings.append(f"phase2/{m}: pixel_metrics_summary.json missing — CV pixel row uses the "
+                                         "training-time union rule; run evaluate_cv_pixels.py (Phase 5 top-1 rule)")
                 for k in PIXEL_KEYS + ("pooled_dsc", "pooled_jsi"):
-                    v = inst["summary"].get(f"val_{k}") or {"mean": math.nan, "std": math.nan}
+                    v = (pix["summary"].get(k) if pix else inst["summary"].get(f"val_{k}")) or \
+                        {"mean": math.nan, "std": math.nan}
                     row[f"{k}_mean"], row[f"{k}_std"] = v["mean"], v["std"]
                     self.add("phase2", "baseline", m, "cv", "fp32", k, v["mean"], v["std"], n=inst["n_folds"])
                 pixel_rows.append(row)

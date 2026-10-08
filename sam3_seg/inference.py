@@ -14,9 +14,15 @@ the same function of the model:
 2. per image (batch = 1) the predictions are converted to COCO records as the
    official ``PredictionDumper`` does (scores rounded to 5 decimals, top
    ``maxdets`` = 100 per image);
-3. the predicted binary mask is the **union of the instance masks with score
-   >= 0.5** (:data:`common.BASE_SETUP` ``score_threshold``), as in
-   :func:`protocol_trainer.pixel_metrics_from_dump`, and is scored against the
+3. the predicted binary mask is the **highest-scoring instance mask (top-1)
+   among those with score >= ``PIXEL_CONF`` (0.001)** — the rule and the constant
+   of YOLO26's pixel evaluation, from the shared :mod:`segmentation_metrics`.
+   ISIC 2018 Task 1 has exactly one lesion per image, so lower-ranked instances
+   are never merged, and the low threshold only guarantees that the lesion
+   hypothesis is never dropped. Training-time validation (checkpoint selection,
+   Phases 1-4) keeps its own rule (union of instances >= 0.5,
+   ``BASE_SETUP["score_threshold"]``) so every training phase selects identically
+   — and is scored against the
    ground truth with :func:`segmentation_metrics.pixel_scores` — the code shared
    with YOLO26 and the U-Net. The ground truth is the union of the image's
    COCO RLE masks, encoded losslessly in Phase 0 from the **official ISIC mask**
@@ -27,7 +33,7 @@ FP16 is SAM 3's official mixed-precision path (``torch.autocast`` float16,
 FP32 weights) — the model is not converted with ``.half()``.
 
 Output rows use the YOLO26 / U-Net per-image CSV columns: ``image``,
-``height``, ``width``, ``n_pred`` (instances with score >= threshold),
+``height``, ``width``, ``n_pred`` (instances with score >= ``PIXEL_CONF``),
 ``max_conf`` (maximum instance score), ``infer_ms`` and every key of
 :func:`pixel_scores`.
 """
@@ -45,12 +51,13 @@ import torch
 
 from common import BASE_SETUP
 from protocol_trainer import union_masks
-from segmentation_metrics import pixel_scores
+from segmentation_metrics import PIXEL_CONF, pixel_scores
 
 #: Version of the evaluation method (part of the result cache keys).
-EVAL_VERSION: int = 3   # 2: + boundary metrics (BIoU, NSD); 3: + HD95
+EVAL_VERSION: int = 5   # 2: + boundary metrics (BIoU, NSD); 3: + HD95; 4: top-1 mask (was union);
+                        # 5: top-1 candidates >= PIXEL_CONF (0.001; was 0.5), as YOLO26
 
-#: Instance score threshold of the merged binary mask (as in validation).
+#: Training-time validation threshold (union rule selecting best.pt in Phases 1-4); not used for scoring here.
 SCORE_THRESHOLD: float = float(BASE_SETUP["score_threshold"])
 
 _RESOLVERS_REGISTERED = False
@@ -183,8 +190,8 @@ def evaluate_annotations(
             im = images[img_id]
             h, w = im["height"], im["width"]
             recs = by_image.get(img_id, [])
-            kept = [r["segmentation"] for r in recs if r["score"] >= SCORE_THRESHOLD]
-            pred = union_masks(kept, h, w)
+            kept = [r for r in recs if r["score"] >= PIXEL_CONF]
+            pred = union_masks([max(kept, key=lambda r: r["score"])["segmentation"]] if kept else [], h, w)
             if mask_dir is not None:
                 cv2.imwrite(str(Path(mask_dir) / f"{Path(im['file_name']).stem}.png"), pred.astype(np.uint8) * 255)
             rows.append({"image": str(Path(image_dir) / im["file_name"]), "height": h, "width": w,

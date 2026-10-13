@@ -14,7 +14,7 @@
 > this document never silently disagree.
 >
 > **Placeholders.** Everything written as **[RESULT]** or **[…]** must be filled in after the final run (most values
-> come from `analysis_outputs/`, produced by `04_cross_architecture_results.ipynb`). Numbers quoted from earlier or
+> come from `analysis_outputs/exports/`, produced by the paper workspace `analysis_outputs/notebooks/`). Numbers quoted from earlier or
 > preliminary runs are labelled as such.
 
 ---
@@ -35,6 +35,7 @@
 12. [Ready-to-adapt wording for the Methods section](#12-ready-to-adapt-wording-for-the-methods-section)
 13. [Artefact map: which file feeds which table or figure](#13-artefact-map-which-file-feeds-which-table-or-figure)
 14. [Committee-compliance checklist, disclosure checklist and audit changelog](#14-committee-compliance-checklist-disclosure-checklist-and-audit-changelog)
+15. [Empirical findings (status 2026-10-13)](#15-empirical-findings-status-2026-10-13)
 - [Appendix A — Statements in the per-arm notes that the final protocol supersedes](#appendix-a--statements-in-the-per-arm-notes-that-the-final-protocol-supersedes)
 - [Appendix B — Suggested references](#appendix-b--suggested-references)
 
@@ -72,10 +73,12 @@ output schema. Only the model, its native input size, its default recipe and its
 | Determinism | deterministic algorithms requested (warn-only); resume not bit-identical | **bit-exact** (incl. resume, any worker count) | bit-exact only in strict mode (verified under the earlier FP32 setup); the study uses warn-only + FP16 AMP → runs are statistically equivalent, not bit-identical |
 
 **Computing environment.** Docker image `nvidia/cuda:12.1.0-devel-ubuntu22.04`, Python 3.11, PyTorch 2.5.1 /
-torchvision 0.20.1 / torchaudio 2.5.1 (CUDA 12.1 builds) in all three arms (§ 10). Training: [YOLO26: one or two
-NVIDIA Tesla V100S 32 GB with DDP — state what the final run used]; U-Net and SAM 3: one V100S. Phase 5 inference
-and profiling: a single GPU [Tesla V100S-PCIE-32GB, driver …]; host CPU [Intel Xeon Gold 5220R]. Library versions
-and the GPU model are recorded in every output file.
+torchvision 0.20.1 / torchaudio 2.5.1 (CUDA 12.1 builds) in all three arms (§ 10). Training: **one NVIDIA Tesla V100S-PCIE-32GB per
+arm** (YOLO26 on GPU 0, U-Net then SAM 3 on GPU 1; no DDP in the final runs). Phase 5 inference and profiling: a
+single Tesla V100S-PCIE-32GB, NVIDIA driver 580.173.02 (CUDA 12.1 user space in the containers, cuDNN 9.1); host
+CPU Intel Xeon Gold 5220R (48 logical CPUs). Library versions and the GPU model are recorded in every output file. The
+host driver was upgraded to 580.178 by `unattended-upgrade` on 2026-10-09 without a reboot (§ 14.6): every result
+of this study was produced with the 580.173.02 kernel module.
 
 ---
 
@@ -353,7 +356,7 @@ baseline) — no width scaling comparable to the YOLO26 sizes.
 | Base setup (fixed) | Value |
 |---|---|
 | Loss | BCE (pixel mean) + (1 − soft Dice), Dice over the whole batch with smoothing 10⁻⁶ — the original Keras `bce_dice_loss`; BCE computed from logits (numerically stable; Keras additionally clips probabilities to [10⁻⁷, 1 − 10⁻⁷]) |
-| Optimiser / schedule | AdamW (decoupled weight decay ≡ Keras `Adam(weight_decay=…)`), ε = 10⁻⁷ (Keras default), β₂ = 0.999, **constant learning rate** (as in the original baseline) |
+| Optimiser / schedule | AdamW (decoupled weight decay ≡ Keras `Adam(weight_decay=…)`), ε = 10⁻⁷ (Keras default), β₂ = 0.999, **constant learning rate** (as in the original baseline). An opt-in cosine schedule (`UNET_LR_SCHEDULE=cosine`, lr0 → 0.01 · lr0 per epoch) exists **only** for the sensitivity run `pipeline_unet_cosine_v1` (§ 14.7); the default leaves the protocol hash unchanged |
 | Input / batch / budget | 256 × 256, batch 16, 120 epochs, patience 120 (HPO 30 / 30) |
 | Numerics / selection | FP32, seed 0, deterministic algorithms; after every epoch the per-image mean JSI on the validation set (at 256 × 256, same definitions as § 7) is computed; `best.pt` replaced only by a strictly better epoch (ties keep the earliest) |
 
@@ -553,8 +556,11 @@ of magnitude more than the U-Net.
   small or intricate lesions — small compared with typical inter-model differences, but to be stated. Nearest-neighbour
   upsampling of the mask gives a lower ceiling (DSC 0.9951 on 199 test images), which is why the pipeline upsamples the
   probability map bilinearly. The oracle also verifies the alignment of the inference and scoring path (a one-pixel
-  shift or a flip would lower its DSC drastically). **[RESULT: re-measure on the official 1,000-image test set at the
-  dataset resolution — the ceiling is expected to be lower now that images keep up to 1,024 px.]**
+  shift or a flip would lower its DSC drastically). **[RESULT: the oracle ceiling is still to be re-measured on the
+  official 1,000-image test set at the dataset resolution — expected to be lower now that images keep up to 1,024 px.]**
+  Related check already done (2026-10-03, CPU): the Phase 1 `best.pt` scored on the 100 validation images at the
+  dataset resolution gives JSI 0.8113 / DSC 0.8824, against 0.8112 / 0.8824 at 256 × 256 — the 256-px selection
+  metric does not inflate the U-Net's overlap scores (only the pooled JSI drops, 0.774 → 0.743).
 * **Native vs. resolution-matched compute.** The fused U-Net needs **6.40 GFLOPs** at its native 256 × 256 and **40.0
   GFLOPs** at 640 × 640 (cost grows with the pixel count, (640/256)² = 6.25×) — more than four times YOLO26n-seg at
   640 px (≈ 9.0–9.1 GFLOPs) for a comparable parameter count (2.69 M fused): the U-Net convolves at full input
@@ -647,8 +653,10 @@ of magnitude more than the U-Net.
 * **FP16 = `torch.autocast(float16)` with FP32 weights** (SAM 3's official mixed-precision path), whereas YOLO26 and the
   U-Net convert the weights (`.half()`); SAM 3's `vram_weights_mb` is therefore the FP32 footprint in both rows. In the
   preliminary check FP16 changed the mean validation JSI by +0.0006.
-* **Preliminary latency** (smoke test, V100S): ≈ 590 ms per image in FP32 (1.7 FPS), ≈ 196 ms with FP16 autocast;
-  3.3 GB of VRAM for the weights, forward peak 4.1 GB **[replace with the final Phase 5 values]**.
+* **Phase 5 latency** (V100S, batch 1, Optimized): forward 597 ms in FP32 and 196 ms with FP16 autocast (3.0×),
+  587 / 184 ms with cached text features, end-to-end (`Sam3Processor`) 603 / 203 ms; allocator peak 4,106 MiB (FP32),
+  process footprint 5,460 MiB. The Baseline FP32 benchmark ran on a busy GPU and is re-measured on an idle GPU before
+  publication (the Optimized FP32 and both FP16 runs were idle).
 * **Reduced budget** (30 epochs; HPO 10 × 10) — disclosed in `final_results.json` → `protocol_notes`.
 
 ---
@@ -767,7 +775,8 @@ benchmark.
 ## 9. Cross-architecture aggregation (root notebook)
 
 `04_cross_architecture_results.ipynb` (driver) and `results_aggregator.py` (logic, also runnable headless) read only the
-Phase 5 summaries and per-image files of the three pipelines and write `analysis_outputs/`:
+Phase 5 summaries and per-image files of the three pipelines and write `analysis_outputs/exports/repo_notebook_04/`
+(the paper workspace's `04_master_cross_model_comparison.ipynb` builds the final manuscript tables):
 
 * **Tables (LaTeX `booktabs` + CSV):** 1 accuracy with 95 % CI (best per column in bold); 2 efficiency with the
   real-time criterion; 3 HPO effect; 4 FP16 vs. FP32; 5 training cost per phase; 6 CV vs. test; 7 pairwise paired tests
@@ -928,9 +937,12 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 5. **HPO bookkeeping** — completed, failed and accepted-failure trials per model (`hpo_state.json`).
 6. **Search-algorithm asymmetry** — genetic algorithm (YOLO26) vs. TPE (U-Net, SAM 3); SAM 3's 10 × 10 budget with 5
    start-up trials.
-7. **Effective batch** — YOLO26x micro-batch 8 (`batch_effective`), effective batch 64 everywhere.
+7. **Effective batch** — YOLO26x trains with micro-batch 8: Ultralytics fell back from 16 to 8 in Phase 1 and in all
+   five CV folds (logged as `batch_reduced` in each `run_state.json`); HPO trials and Phase 4 use 8 directly
+   (`MICRO_BATCH`). Effective batch 64 everywhere (`nbs = 64`).
 8. **Contended efficiency runs** — none may be quoted; report GPU, driver, clock behaviour.
-9. **Different input resolutions and the U-Net resolution ceiling** (re-measured on the official test set).
+9. **Different input resolutions and the U-Net resolution ceiling** (oracle ceiling still to be re-measured on the
+   official test set; the 256-px vs full-resolution validation check is done — § 6.2).
 10. **Validation-metric resolution of the U-Net** (256 × 256 for selection).
 11. **Deliberate differences from the original Keras training** (binary mask augmentation, per-epoch reshuffle, BCE
     from logits).
@@ -1007,6 +1019,65 @@ sizes are distinguished by direct labels (n, s, m, l, x).
   prompt removes only the ability to move one prompt embedding; the layers that consume it remain trainable.
   `val_loss` is logged as 0 by design (the official validation computes no loss) — treat it as missing.
 
+### 14.6 Operational incidents (none changed a reported number)
+
+| When (UTC) | What | Effect |
+|---|---|---|
+| 2026-10-05 21:29 | GPU unavailable to the SAM 3 container ("No CUDA GPUs are available") | Phase 2 fold 4 failed at its first step (no epoch run); restarted clean on 2026-10-06 15:42 and completed |
+| 2026-10-07 17:31 | GPU unavailable to YOLO26 (`phase2_pixels`) | pipeline stopped after all CV folds had trained; relaunched without `--force` (CV pixel re-score re-run) |
+| 2026-10-08 06:30 | GPU unavailable during YOLO26 Phase 3 (nano); 6 retries over 50 min, clean stop (exit 75) | relaunched 14:13 without `--force`; the interrupted trial re-ran from epoch 1 with the same (seeded) hyperparameters; no failed trial recorded |
+| 2026-10-09 06:33 | `unattended-upgrade` upgraded the NVIDIA driver 580.173.02 → 580.178 without a reboot | running containers unaffected; new GPU containers cannot start until the host is rebooted (`analysis_outputs/POST_YOLO26_RUNBOOK.md`) |
+
+Every training run completed its full budget; resumptions are recorded in each `run_state.json` and reported by the
+final reports. Recommendation for future runs: hold the NVIDIA packages (`apt-mark hold`) during experiments.
+
+### 14.7 U-Net learning-rate schedule — sensitivity run (prepared 2026-10-13, not yet executed)
+
+* **Why:** under the constant LR of the original Keras recipe, the U-Net's validation JSI still oscillates at the end
+  of training (per-epoch SD 0.014–0.020 in the late 20-epoch windows), training and validation losses are still
+  decreasing at epoch 120, and the 539-image CV folds select late epochs (86–117) — the model is still improving when
+  the budget ends, and the selected epoch is partly a lottery. YOLO26 already trains with a cosine schedule, so a
+  reviewer could attribute part of the U-Net's gap to the schedule.
+* **What:** `UNET_LR_SCHEDULE=cosine` decays the LR per epoch from `lr0` to `0.01 · lr0` (as YOLO26's `cos_lr`,
+  `lrf = 0.01`) in every phase, everything else identical; the LR is a pure function of the epoch (bit-exact resume).
+  Output: `logs/pipeline_unet_cosine_v1/` (the orchestrator refuses `pipeline_final_v1`). The constant-LR U-Net
+  remains the reported arm; the cosine run is a **sensitivity analysis** reported next to it (the U-Net test set had
+  already been evaluated when the run was designed — it must not replace the original).
+
+---
+
+## 15. Empirical findings (status 2026-10-13)
+
+Live numbers, tables and figures: `analysis_outputs/notebooks/` and `analysis_outputs/exports/` (regenerated by
+`analysis_outputs/refresh_all_analyses.sh`). Status: U-Net and SAM 3 complete (Phases 1–5); YOLO26 complete
+through Phase 3 except the xlarge HPO (in progress), Phases 4–5 pending.
+
+1. **Accuracy.** 5-fold CV JSI (mean ± SD over folds): SAM 3 0.846 ± 0.005; YOLO26 0.833–0.835 (all five sizes);
+   U-Net 0.811 ± 0.009. Test set (n = 1,000, Optimized): SAM 3 JSI 0.849 [0.840, 0.857], DSC 0.910, HD95 53.3 px
+   (median 24.0); U-Net JSI 0.795 [0.783, 0.806], DSC 0.871, HD95 89.6 px (median 39.5). Paired SAM 3 − U-Net:
+   ΔJSI +0.054 [0.046, 0.063] (Optimized; better on 690 of 1,000 images), +0.057 [0.048, 0.068] (Baseline); Holm
+   p < 0.001 for JSI, DSC, HD95 and BIoU.
+2. **HPO did not transfer to the test set** (U-Net, SAM 3; YOLO26 pending). U-Net: validation gain +0.019 JSI
+   (1.35 × trial SD) → test ΔJSI −0.002 [−0.010, +0.006], worse boundaries (BIoU −0.020, HD95 +7.0 px) and an
+   operating-point shift toward over-segmentation (sensitivity 0.880 → 0.913, specificity 0.963 → 0.931; better on
+   the largest lesions, worse on small ones). SAM 3: validation gain +0.006 (0.56 × trial SD) → test ΔJSI −0.006
+   [−0.011, −0.0004] with a non-significant Wilcoxon test (534 images better, 466 worse): a tail effect concentrated
+   in the largest lesions (largest quintile 0.834 → 0.793). Mechanisms: (i) selection on 100 validation images (SE
+   ≈ 0.02 JSI) — winner's curse; (ii) SAM 3's 10-epoch trials favour aggressive learning rates (winner at 97 % of
+   the `lr_scale` and backbone-decay ranges), which overfit over the 30-epoch Phase 4 (peak at epoch 4, then −0.022
+   JSI; training loss 18.6 vs 31.0 in Phase 1); (iii) several YOLO26 winners sit within 5 % of the refined bounds.
+   The a-priori rule (compare the Optimized variants) is kept; both variants are reported.
+3. **Training dynamics.** SAM 3 converges fast (best epoch 7 of 30, then a plateau without decline). YOLO26's late
+   decline on the official validation split (mask mAP 0.024–0.068 below its peak) is absent on the CV folds
+   (0.008–0.015, best epochs 73–120): a training-to-validation distribution shift, not generic overfitting;
+   `best.pt` captures the peak. U-Net: constant-LR oscillation (§ 14.7).
+4. **Scale invariance (YOLO26).** CV JSI 0.833–0.835 and CV mask mAP50-95 0.725–0.738 from nano to xlarge, while
+   the Phase 1 training time grows from 1.7 h to 10.5 h: model scale does not buy accuracy on this task.
+5. **Failure modes.** Accuracy falls for the largest (frame-filling) lesions in every arm; the U-Net is most affected
+   (largest quintile JSI 0.671 Baseline, 51 of 200 images below 0.5) — consistent with its 256-px input.
+6. **Efficiency (status).** All U-Net and the SAM 3 Baseline FP32 benchmarks ran on a busy GPU and are re-measured
+   on an idle GPU after YOLO26 finishes; SAM 3's FP16 autocast is 3.0× faster than FP32 at batch 1.
+
 ---
 
 ## Appendix A — Statements in the per-arm notes that the final protocol supersedes
@@ -1025,9 +1096,13 @@ The per-arm notes were written at different stages of the protocol. When writing
 | 8 | YOLO26 § 3.3 | epochs trained "computed over unique epochs" | `epochs_trained` = last epoch number; gaps in `results.csv` reported |
 | 9 | YOLO26 § 7.2, § 7.3; U-Net § 6 | end-to-end = `predict()` on the first test image (YOLO26 without `retina_masks`); VRAM excludes the CUDA context | end-to-end ends at the scored full-resolution mask on the host for every arm; first image **by ISIC ID**; plus `end_to_end_dataset` (100 images) and process-level VRAM incl. CUDA context — § 8 |
 | 10 | all three | metrics: DSC, JSI, JSI$_{0.65}$, sensitivity, specificity, accuracy | **+ Boundary IoU, NSD, HD95**; cross-architecture paired tests with Holm and Friedman — § 7 |
-| 11 | U-Net § 7.1 | resolution ceiling DSC 0.9967 (994 images, 640 × 640) | still valid for the old export only — **re-measure** on the official test set |
+| 11 | U-Net § 7.1 | resolution ceiling DSC 0.9967 (994 images, 640 × 640) | valid for the old export only — oracle **to be re-measured** on the official test set; the 256-px selection metric equals the full-resolution JSI on the official validation split (0.8112 vs 0.8113) |
 | 12 | SAM 3 § 1.4, § 5 | validation-JSI reproduction value 0.6277150682843381; FP16 Δ JSI +0.0006 | preliminary checks on the earlier data — keep as verification evidence, not as results |
 | 13 | YOLO26 § 1.1, § 1.3 | [N_train/N_val/N_test]; training with DDP on two V100S | 2,594 / 100 / 1,000; GPU count of the final run to be stated (the launcher `wait_gpu.sh` now trains on one GPU by default) |
+| 14 | SAM 3 (header, § 3) | all parameters trainable, text encoder included; one FP32 epoch ≈ 106 min | text encoder frozen (486.8 M of 840.5 M trainable), FP16 AMP with FP32 master weights, backbone activation checkpointing off; ≈ 33.5 min per epoch — § 5.3, § 14.5 |
+| 15 | SAM 3 (header, § 1.3) | test mask = top-1 instance with score ≥ 0.5 | top-1 with score ≥ `PIXEL_CONF` = 0.001 (Phase 5 and the Phase 2 pixel re-score); 0.5 only in the training-time selection rule — § 14.4 |
+| 16 | YOLO26 § 5 | "all models were trained in FP32" | YOLO26 and the U-Net train in FP32; SAM 3 in FP16 AMP — § 7, § 14.5 |
+| 17 | U-Net (header) | 120 epochs, patience 25 | patience = epochs (120 / 120; HPO 30 / 30) — § 4; optional cosine sensitivity run — § 14.7 |
 
 ---
 

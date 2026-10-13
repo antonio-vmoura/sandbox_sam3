@@ -556,9 +556,18 @@ of magnitude more than the U-Net.
   small or intricate lesions — small compared with typical inter-model differences, but to be stated. Nearest-neighbour
   upsampling of the mask gives a lower ceiling (DSC 0.9951 on 199 test images), which is why the pipeline upsamples the
   probability map bilinearly. The oracle also verifies the alignment of the inference and scoring path (a one-pixel
-  shift or a flip would lower its DSC drastically). **[RESULT: the oracle ceiling is still to be re-measured on the
-  official 1,000-image test set at the dataset resolution — expected to be lower now that images keep up to 1,024 px.]**
-  Related check already done (2026-10-03, CPU): the Phase 1 `best.pt` scored on the 100 validation images at the
+  shift or a flip would lower its DSC drastically). **Official test set (1,000 images, dataset resolution; measured
+  2026-10-13 with `unet/oracle_resolution_ceiling.py`, outputs in `logs/pipeline_final_v1/oracle_ceiling/`):** the
+  cached 256 × 256 reference mask through `inference.predict_full_res`'s upsampling (bilinear, `align_corners=False`,
+  > 0.5), scored against the official mask with the shared metrics, reaches **JSI 0.9934 [0.9930, 0.9938], DSC 0.9967
+  [0.9965, 0.9969], Boundary IoU 0.9576 [0.9563, 0.9589], NSD 1.0000 (min 0.990), HD95 1.27 px (median 1.0, max
+  3.6)**; worst image JSI 0.926 / DSC 0.961; no empty prediction (validation split: JSI 0.9937, DSC 0.9968, BIoU 0.9605,
+  HD95 1.22 px). The ceiling did **not** drop with the larger working resolution (DSC 0.9967 as on the old export).
+  Resolution therefore costs the U-Net ≈ 0.007 JSI, ≈ 0.003 DSC, ≈ 0.04 BIoU and ≈ 1.3 px HD95 at most — against a
+  measured gap to perfection of ≈ 0.20 JSI (test JSI 0.797), ≈ 0.62 BIoU and ≈ 81 px HD95: **the U-Net's errors are
+  model errors, not resolution loss.** By lesion-size quintile the ceiling is highest for the largest lesions
+  (JSI 0.996, BIoU 0.955) — exactly where the U-Net is weakest (JSI 0.671), so its large-lesion failures are not a
+  resolution artefact. Related check already done (2026-10-03, CPU): the Phase 1 `best.pt` scored on the 100 validation images at the
   dataset resolution gives JSI 0.8113 / DSC 0.8824, against 0.8112 / 0.8824 at 256 × 256 — the 256-px selection
   metric does not inflate the U-Net's overlap scores (only the pooled JSI drops, 0.774 → 0.743).
 * **Native vs. resolution-matched compute.** The fused U-Net needs **6.40 GFLOPs** at its native 256 × 256 and **40.0
@@ -821,8 +830,9 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 ## 11. Threats to validity and limitations
 
 1. **Native input resolution differs** (256 / 640 / 1008 px). Evaluation is at the same dataset resolution against the
-   same masks, but part of the accuracy *and* cost differences is resolution. Report the U-Net's 640-px GFLOPs and its
-   resolution ceiling.
+   same masks, but part of the cost differences is resolution (report the U-Net's 640-px GFLOPs). For accuracy the
+   effect is bounded and small: the U-Net's 256-px oracle ceiling on the test set is JSI 0.993 / DSC 0.997 / BIoU 0.958
+   (§ 6.2).
 2. **Unequal training budgets for SAM 3** (30 epochs, HPO 10 × 10 vs. 120 epochs, HPO 30 × 30), justified by compute
    (≈ 1.8 h per epoch) and strong pretrained weights; bias direction: SAM 3 is, if anything, under-tuned.
 3. **Different selection criteria** (YOLO26: box + mask mAP50-95; U-Net and SAM 3: per-image JSI, the U-Net at
@@ -941,8 +951,8 @@ sizes are distinguished by direct labels (n, s, m, l, x).
    five CV folds (logged as `batch_reduced` in each `run_state.json`); HPO trials and Phase 4 use 8 directly
    (`MICRO_BATCH`). Effective batch 64 everywhere (`nbs = 64`).
 8. **Contended efficiency runs** — none may be quoted; report GPU, driver, clock behaviour.
-9. **Different input resolutions and the U-Net resolution ceiling** (oracle ceiling still to be re-measured on the
-   official test set; the 256-px vs full-resolution validation check is done — § 6.2).
+9. **Different input resolutions and the U-Net resolution ceiling** — measured on the official test set: JSI 0.9934,
+   DSC 0.9967, BIoU 0.9576, NSD 1.000, HD95 1.27 px (§ 6.2); the 256-px vs full-resolution validation check is done too.
 10. **Validation-metric resolution of the U-Net** (256 × 256 for selection).
 11. **Deliberate differences from the original Keras training** (binary mask augmentation, per-epoch reshuffle, BCE
     from logits).
@@ -1074,7 +1084,10 @@ through Phase 3 except the xlarge HPO (in progress), Phases 4–5 pending.
 4. **Scale invariance (YOLO26).** CV JSI 0.833–0.835 and CV mask mAP50-95 0.725–0.738 from nano to xlarge, while
    the Phase 1 training time grows from 1.7 h to 10.5 h: model scale does not buy accuracy on this task.
 5. **Failure modes.** Accuracy falls for the largest (frame-filling) lesions in every arm; the U-Net is most affected
-   (largest quintile JSI 0.671 Baseline, 51 of 200 images below 0.5) — consistent with its 256-px input.
+   (largest quintile JSI 0.671 Baseline, 51 of 200 images below 0.5). This is **not** a resolution effect — the
+   256-px oracle ceiling is highest in that quintile (JSI 0.996) — but a failure of the model itself on frame-filling
+   lesions (plausibly the limited context of a 4-level, 16-filter network; not tested here). The U-Net's 256-px
+   resolution ceiling on the whole test set is JSI 0.993 / DSC 0.997 / BIoU 0.958 / HD95 1.3 px.
 6. **Efficiency (status).** All U-Net and the SAM 3 Baseline FP32 benchmarks ran on a busy GPU and are re-measured
    on an idle GPU after YOLO26 finishes; SAM 3's FP16 autocast is 3.0× faster than FP32 at batch 1.
 
@@ -1096,7 +1109,7 @@ The per-arm notes were written at different stages of the protocol. When writing
 | 8 | YOLO26 § 3.3 | epochs trained "computed over unique epochs" | `epochs_trained` = last epoch number; gaps in `results.csv` reported |
 | 9 | YOLO26 § 7.2, § 7.3; U-Net § 6 | end-to-end = `predict()` on the first test image (YOLO26 without `retina_masks`); VRAM excludes the CUDA context | end-to-end ends at the scored full-resolution mask on the host for every arm; first image **by ISIC ID**; plus `end_to_end_dataset` (100 images) and process-level VRAM incl. CUDA context — § 8 |
 | 10 | all three | metrics: DSC, JSI, JSI$_{0.65}$, sensitivity, specificity, accuracy | **+ Boundary IoU, NSD, HD95**; cross-architecture paired tests with Holm and Friedman — § 7 |
-| 11 | U-Net § 7.1 | resolution ceiling DSC 0.9967 (994 images, 640 × 640) | valid for the old export only — oracle **to be re-measured** on the official test set; the 256-px selection metric equals the full-resolution JSI on the official validation split (0.8112 vs 0.8113) |
+| 11 | U-Net § 7.1 | resolution ceiling DSC 0.9967 (994 images, 640 × 640) | re-measured on the official test set (1,000 images, dataset resolution): DSC 0.9967, JSI 0.9934, BIoU 0.9576, HD95 1.27 px — § 6.2; the 256-px selection metric equals the full-resolution JSI on the validation split (0.8112 vs 0.8113) |
 | 12 | SAM 3 § 1.4, § 5 | validation-JSI reproduction value 0.6277150682843381; FP16 Δ JSI +0.0006 | preliminary checks on the earlier data — keep as verification evidence, not as results |
 | 13 | YOLO26 § 1.1, § 1.3 | [N_train/N_val/N_test]; training with DDP on two V100S | 2,594 / 100 / 1,000; GPU count of the final run to be stated (the launcher `wait_gpu.sh` now trains on one GPU by default) |
 | 14 | SAM 3 (header, § 3) | all parameters trainable, text encoder included; one FP32 epoch ≈ 106 min | text encoder frozen (486.8 M of 840.5 M trainable), FP16 AMP with FP32 master weights, backbone activation checkpointing off; ≈ 33.5 min per epoch — § 5.3, § 14.5 |

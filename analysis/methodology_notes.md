@@ -13,9 +13,10 @@
 > [Appendix A](#appendix-a--statements-in-the-per-arm-notes-that-the-final-protocol-supersedes), so the notes and
 > this document never silently disagree.
 >
-> **Placeholders.** Everything written as **[RESULT]** or **[…]** must be filled in after the final run (most values
-> come from `analysis_outputs/exports/`, produced by the paper workspace `analysis_outputs/notebooks/`). Numbers quoted from earlier or
-> preliminary runs are labelled as such.
+> **Status (2026-10-17): final.** All three arms completed the five phases in `logs/pipeline_final_v1/` of their
+> repository; Phase 5 efficiency of all three was re-measured on an idle GPU on 2026-10-17. Results: § 15 and
+> `analysis_outputs/COMPREHENSIVE_TRAINING_REPORT_FINAL_V1.md`; tables and figures: `analysis_outputs/exports/`
+> (produced by `analysis_outputs/notebooks/`). Numbers quoted from earlier or preliminary runs are labelled as such.
 
 ---
 
@@ -35,7 +36,7 @@
 12. [Ready-to-adapt wording for the Methods section](#12-ready-to-adapt-wording-for-the-methods-section)
 13. [Artefact map: which file feeds which table or figure](#13-artefact-map-which-file-feeds-which-table-or-figure)
 14. [Committee-compliance checklist, disclosure checklist and audit changelog](#14-committee-compliance-checklist-disclosure-checklist-and-audit-changelog)
-15. [Empirical findings (status 2026-10-13)](#15-empirical-findings-status-2026-10-13)
+15. [Empirical findings (final, 2026-10-17)](#15-empirical-findings-final-2026-10-17)
 - [Appendix A — Statements in the per-arm notes that the final protocol supersedes](#appendix-a--statements-in-the-per-arm-notes-that-the-final-protocol-supersedes)
 - [Appendix B — Suggested references](#appendix-b--suggested-references)
 
@@ -75,10 +76,12 @@ output schema. Only the model, its native input size, its default recipe and its
 **Computing environment.** Docker image `nvidia/cuda:12.1.0-devel-ubuntu22.04`, Python 3.11, PyTorch 2.5.1 /
 torchvision 0.20.1 / torchaudio 2.5.1 (CUDA 12.1 builds) in all three arms (§ 10). Training: **one NVIDIA Tesla V100S-PCIE-32GB per
 arm** (YOLO26 on GPU 0, U-Net then SAM 3 on GPU 1; no DDP in the final runs). Phase 5 inference and profiling: a
-single Tesla V100S-PCIE-32GB, NVIDIA driver 580.173.02 (CUDA 12.1 user space in the containers, cuDNN 9.1); host
-CPU Intel Xeon Gold 5220R (48 logical CPUs). Library versions and the GPU model are recorded in every output file. The
-host driver was upgraded to 580.178 by `unattended-upgrade` on 2026-10-09 without a reboot (§ 14.6): every result
-of this study was produced with the 580.173.02 kernel module.
+single Tesla V100S-PCIE-32GB (CUDA 12.1 user space in the containers, cuDNN 9.1); host CPU Intel Xeon Gold 5220R
+(48 logical CPUs). Library versions, the GPU model and the driver are recorded in every output file. **NVIDIA driver:**
+training ran on 580.173.02 except the last 6 YOLO26-x HPO trials and all YOLO26 Phase 4 runs, which ran on
+580.178.04 after the kernel module was reloaded on 2026-10-15 (the package had been upgraded by `unattended-upgrade`
+on 2026-10-09, § 14.6); the final Phase 5 (test accuracy and efficiency) of all three arms ran on 580.178.04
+(2026-10-17, § 14.8).
 
 ---
 
@@ -361,9 +364,8 @@ cross-entropy, SGD with momentum 0.99) — § 5.4.
 
 | Base setup (fixed) | Value |
 |---|---|
-| Loss | BCE (pixel mean) + `dice_weight` × (1 − soft Dice), Dice over the whole batch with smoothing 10⁻⁶ — at `dice_weight` = 1 (the Baseline) exactly the Keras `bce_dice_loss`; BCE computed from logits (numerically stable; Keras additionally clips probabilities to [10⁻⁷, 1 − 10⁻⁷]). The loss family is fixed; its Dice weight is a hyperparameter |
-| Optimiser | AdamW (decoupled weight decay ≡ Keras `Adam(weight_decay=…)`), ε = 10⁻⁷ (Keras default), β₂ = 0.999 |
-| LR schedule | a hyperparameter (table below). Baseline: **constant** learning rate, no warm-up. The rate of every epoch is a pure function of the protocol, the epoch and the checkpointed history (bit-exact resume): optional linear warm-up from 0.1 · lr0 over `warmup_epochs`; then `constant`, `cosine` (per epoch to lr0 · `lr_final_factor`) or `plateau` (× 0.5 after 5 post-warm-up epochs without a strict improvement of the validation JSI, as Keras' `ReduceLROnPlateau` without cooldown, floored at lr0 · `lr_final_factor`; factor and patience fixed in the base setup) |
+| Loss | BCE (pixel mean) + (1 − soft Dice), Dice over the whole batch with smoothing 10⁻⁶ — the original Keras `bce_dice_loss`; BCE computed from logits (numerically stable; Keras additionally clips probabilities to [10⁻⁷, 1 − 10⁻⁷]) |
+| Optimiser / schedule | AdamW (decoupled weight decay ≡ Keras `Adam(weight_decay=…)`), ε = 10⁻⁷ (Keras default), β₂ = 0.999, **constant learning rate** in every phase (the out-of-the-box recipe of the pre-refactor pipeline; not searched — § 14.7) |
 | Input / batch / budget | 256 × 256, batch 16, 120 epochs, patience 120 (HPO 30 / 30) |
 | Numerics / selection | FP32, seed 0, deterministic algorithms; after every epoch the per-image mean JSI on the validation set (at 256 × 256, same definitions as § 7) is computed; `best.pt` replaced only by a strictly better epoch (ties keep the earliest) |
 
@@ -377,33 +379,23 @@ interpolated bilinearly. Visual inspection confirmed image–mask alignment.
 | Tuned (Phase 3) | Default (Baseline = Keras) | Range |
 |---|---|---|
 | `lr0` | 1e-3 | [1e-4, 1e-2] log |
-| `weight_decay` | 0 | [1e-6, 1e-3] log (trial 1 trains the exact 0) |
+| `weight_decay` | 0 | [1e-6, 1e-3] log |
 | `beta1` (AdamW) | 0.9 | [0.80, 0.95] |
-| `lr_schedule` | constant | {constant, cosine, plateau} |
-| `lr_final_factor` | 0.01 (inert under constant) | [0.005, 0.10] log |
-| `warmup_epochs` | 0 | 0–5, integer |
-| `dice_weight` | 1.0 | [0.5, 2.0] log |
 | `dropout` | 0.1 | [0.10, 0.40] |
 | `degrees` / `translate` / `scale` | 15 / 0.1 / 0.1 | [0, 45] / [0, 0.20] / [0, 0.30] |
 | `fliplr` / `flipud` (probabilities) | 0.5 / 0.5 | [0, 0.50] each |
 
-**The Baseline is trial 1.** The first trial trains the **exact** Baseline hyperparameters (weight decay 0, constant
-LR, no warm-up, Dice weight 1, …), so the search starts from the Baseline itself and can only select something else by
-beating it. The default weight decay 0 cannot be represented on the logarithmic scale (lower bound 10⁻⁶): Optuna's
-record of trial 1 — used only by the TPE model — stores 10⁻⁶, while the training, `tune_results.csv` and
-`best_hyperparameters.yaml` use the value actually trained (0). The log scale was kept because plausible weight-decay
-values span several orders of magnitude. (The archived first run, `pipeline_final_v1_old`, trained the clipped
-10⁻⁶ in its first trial and kept the LR schedule locked to constant — § 14.7.)
+**Baseline outside the search bounds.** The default weight decay 0 cannot be represented on the logarithmic scale
+(lower bound 10⁻⁶); the first trial evaluates the Baseline clipped to the bounds (weight decay 10⁻⁶ — negligible, but
+formally a different configuration). As for YOLO26, the Baseline is therefore not itself a candidate. The log scale was
+kept because plausible weight-decay values span several orders of magnitude.
 
 **HPO algorithm and reproducibility.** The HPO framework of the original U-Net pipeline was retained: Optuna TPE with
 SQLite storage, 30 trials of 30 epochs, the first **10** trials random (Optuna's default start-up), fitness = validation
 per-image mean JSI of the trial's best epoch. Because the sampler's random state is not persisted, a search resumed
 with a re-created `TPESampler(seed)` would propose different configurations; therefore a **fresh TPE sampler seeded
 with (seed × 1,000,003 + i) mod 2³²** is installed before every proposal *i* (*i* = number of completed trials; the first
-proposal is fixed to the Baseline). Every training run — each HPO trial and each CV fold included — seeds the Python,
-NumPy and PyTorch generators from the protocol seed before building the network, so its initial weights do not depend
-on what ran earlier in the same process (a trial started after a restart is identical to the same trial in an
-uninterrupted search). TPE builds its model only from completed trials, so proposal *i* is a
+proposal is fixed to the clipped Baseline). TPE builds its model only from completed trials, so proposal *i* is a
 deterministic function of (seed, *i*, completed history); proposals are recorded and a resumed or retried proposal is
 verified to be identical (otherwise the search stops). Two independent executions produced identical histories.
 
@@ -498,23 +490,23 @@ fine-tuning recipe `roboflow_v100_full_ft_100_images.yaml`); YOLO26 — Ultralyt
 
 **U-Net** (reference: Ronneberger et al., 2015)
 
-| Parameter | Reference | Our Baseline | Phase 3 (U-Net re-run) |
+| Parameter | Reference | Our Baseline | Phase 3 |
 |---|---|---|---|
 | Width / parameters | 64 → 1024 filters (≈ 31 M) | 16 → 256 (2.16 M) | fixed |
 | Normalisation / dropout | none / end of contracting path | BatchNorm after every conv / p 0.1 after every pooling and concatenation | dropout searched [0.10, 0.40] |
 | Convolutions / up-sampling | unpadded 3 × 3 + cropping / 2 × 2 up-conv | padded 3 × 3 / 3 × 3 transposed conv | fixed |
 | Input | 572 × 572 tiles → 388 × 388 (overlap-tile) | whole image at 256 × 256 | fixed |
-| Loss | softmax + cross-entropy with a border weight map | BCE + soft Dice (equal weights) | Dice weight searched [0.5, 2.0] |
+| Loss | softmax + cross-entropy with a border weight map | BCE + soft Dice (equal weights) | fixed |
 | Optimiser | SGD, momentum 0.99, batch 1 | AdamW (β₁ 0.9), batch 16 | β₁ searched [0.80, 0.95]; type fixed |
-| Learning rate, schedule, weight decay, epochs | not reported | lr 1e-3, constant, no warm-up, wd 0, 120 epochs | lr0, schedule (constant / cosine / plateau), final factor, warm-up, wd searched |
+| Learning rate, schedule, weight decay, epochs | not reported | lr 1e-3, constant, no warm-up, wd 0, 120 epochs | lr0 and wd searched; constant schedule, no warm-up fixed |
 | Augmentation | shifts, rotations, grey values, elastic deformations | rotation 15°, shift 0.1, zoom 0.1, flips 0.5 / 0.5 | all five searched; elastic not available |
 
 *Rationale (paper-ready).* "The U-Net arm is a lightweight variant of the original architecture (16 instead of 64 base
 filters, batch normalisation, padded convolutions, a 256 × 256 input) trained from scratch with a standard recipe
 (AdamW, learning rate 10⁻³, binary cross-entropy plus Dice loss, rotation, shift, zoom and flip augmentation). It
 represents a classic, compact segmentation baseline rather than a re-implementation of Ronneberger et al.; the original
-paper does not report a learning rate, schedule or training length, so the Baseline uses a constant learning rate and
-the hyperparameter search may replace it with a cosine or plateau schedule. The resolution cost of the 256 × 256 input
+paper does not report a learning rate, schedule or training length, so a constant learning rate is used throughout
+(the hyperparameter search tunes its value, the weight decay, β₁, dropout and augmentation). The resolution cost of the 256 × 256 input
 is bounded by an oracle: the reference masks themselves, passed through the same up-sampling, reach a Jaccard index of
 0.993 on the test set."
 
@@ -566,15 +558,15 @@ highest-scoring instance, as the task has one lesion per image."
 
 | | Searched | Locked in every phase | Reference value excluded by the ranges |
 |---|---|---|---|
-| U-Net (re-run) | lr0, weight decay, β₁, **LR schedule, final LR factor, warm-up, Dice weight**, dropout, rotation, shift, zoom, flip-LR, flip-UD (13) | architecture, optimiser type, loss family, input, batch, budget, precision | none (trial 1 = the exact Baseline) |
-| U-Net (archived run) | the same without schedule, final factor, warm-up and Dice weight (9) | + constant LR, equal loss weights | weight decay 0 (trial 1 clipped to 10⁻⁶) |
+| U-Net | lr0, weight decay, β₁, dropout, rotation, shift, zoom, flip-LR, flip-UD (9) | architecture, optimiser type, loss (BCE + Dice, equal weights), constant LR, input, batch, budget, precision | weight decay 0 (trial 1 clipped to 10⁻⁶) |
 | SAM 3 | lr_scale, weight decay, layer decay, warm-up, flip, resize minimum (6) | precision, frozen text encoder, batch, epochs, scheduler type and cooldown, losses, `o2m_weight` | none (Meta's warm-up 20 and no flip are reachable) |
 | YOLO26 | lr0, lrf, momentum, weight decay, warm-up, cls, dfl, HSV × 3, translate, flip-UD, mosaic, mixup, copy-paste (15) | optimiser, cosine schedule, `close_mosaic`, epochs, batch, image size, precision, box gain, scale, flip-LR, rotation, shear, erasing | lr0 0.01, weight decay 5e-4 (trial 1 clipped); dfl 1.5 at the upper bound |
 
-*Decision (2026-10-13).* SAM 3 and YOLO26 are **not** re-trained: their Baselines follow the official releases except
-for the adaptations listed above, all justified by the hardware, the task or the need for the tuned values to take
-effect, and disclosed. The U-Net is re-run (all five phases) with the Baseline unchanged and the LR schedule, warm-up,
-final LR factor and Dice weight added to the search (§ 14.7).
+*Decision (2026-10-13, final 2026-10-17).* SAM 3 and YOLO26 are **not** re-trained: their Baselines follow the official
+releases except for the adaptations listed above, all justified by the hardware, the task or the need for the tuned
+values to take effect, and disclosed. A U-Net re-run with the LR schedule, warm-up, final LR factor and Dice weight
+added to the search was prepared and then **dropped** (§ 14.7): the study's U-Net is the run with the 9-parameter
+search above.
 
 ---
 
@@ -687,8 +679,12 @@ final LR factor and Dice weight added to the search (§ 14.7).
   resolution in its first and last stages, whereas YOLO26 reduces the resolution early in its backbone. Compare
   computational cost with the resolution-matched figure (`gflops_640`); latency is reported at each model's native
   input. thop and `FlopCounterMode` agree exactly for this pure CNN (6.401 / 40.003 GFLOPs, measured).
-* **FP16 at batch 1:** in a preliminary (contended) measurement the U-Net, like YOLO26n, was not faster in FP16 than in
-  FP32 — confirm on an idle GPU.
+* **FP16 at batch 1:** confirmed on an idle GPU (2026-10-17): the U-Net is *slower* in FP16 than in FP32 (forward median
+  1.86 vs 1.53 ms, Optimized), like YOLO26-n/s — at 2.2 M parameters the cast/launch overhead exceeds the arithmetic
+  saved.
+* **Benchmark warm-up:** 2,000 discarded forwards (SAM 3 and YOLO26: 50). One U-Net forward takes ≈ 1.6 ms, so 50
+  iterations (≈ 0.1 s) ended before the GPU left its idle clock state (measured: SM clock 1245–1282 MHz instead of
+  1597 MHz and a bimodal median of 2.48 ms in the first idle-GPU run); 2,000 last ≈ 3 s (§ 14.8).
 
 ### 6.3 SAM 3
 
@@ -774,10 +770,9 @@ final LR factor and Dice weight added to the search (§ 14.7).
 * **FP16 = `torch.autocast(float16)` with FP32 weights** (SAM 3's official mixed-precision path), whereas YOLO26 and the
   U-Net convert the weights (`.half()`); SAM 3's `vram_weights_mb` is therefore the FP32 footprint in both rows. In the
   preliminary check FP16 changed the mean validation JSI by +0.0006.
-* **Phase 5 latency** (V100S, batch 1, Optimized): forward 597 ms in FP32 and 196 ms with FP16 autocast (3.0×),
-  587 / 184 ms with cached text features, end-to-end (`Sam3Processor`) 603 / 203 ms; allocator peak 4,106 MiB (FP32),
-  process footprint 5,460 MiB. The Baseline FP32 benchmark ran on a busy GPU and is re-measured on an idle GPU before
-  publication (the Optimized FP32 and both FP16 runs were idle).
+* **Phase 5 latency** (V100S, batch 1, Optimized, idle GPU 2026-10-17): forward 600.85 ms in FP32 and 195.52 ms with
+  FP16 autocast (3.07×), 592.02 / 183.88 ms with cached text features, end-to-end (`Sam3Processor`, median of 100 test
+  images) 607.00 / 202.16 ms; allocator peak 4,106 MiB (FP32), process footprint 5,460 MiB.
 * **Reduced budget** (30 epochs; HPO 10 × 10) — disclosed in `final_results.json` → `protocol_notes`.
 
 ---
@@ -867,15 +862,15 @@ answered by measured latency, throughput and memory of the deployed models.
 | Isolation | every (variant, size, precision) runs in a **freshly started process**: peak-memory counters, allocator cache and cuDNN autotuning state cannot carry over between models |
 | Kernel selection | `torch.backends.cudnn.benchmark = True` (deployment with a fixed input shape); autotuning happens during warm-up, excluded from every measurement |
 | Model form | the deployed form: Conv–BN fused (YOLO26 `fuse()`, U-Net `fuse_conv_bn_eval`), parameters without gradients, `torch.inference_mode()` |
-| `forward` | network only, at the native input size — YOLO26/U-Net: a fixed tensor (uniform random, seed 0); SAM 3: a pre-processed real test image + prompt — **50 warm-up + 500 timed** iterations, each bracketed by a pair of `torch.cuda.Event`s on the current stream followed by a device synchronisation. CUDA events time execution on the device itself, unaffected by asynchronous kernel launches (more accurate than host timers for GPU work); synchronising after every iteration guarantees that each measurement is exactly one image with no queued work (true batch-1 latency) |
-| `end_to_end` | the deployed pipeline from a **decoded image in host memory to the binary mask at dataset resolution in host memory** (pre-processing, inference, post-processing, upsampling, threshold, device→host copy) — YOLO26 `predict(conf=0.25, retina_masks=True)` + union mask; U-Net colour conversion → area resize → scaling → host→device → forward → sigmoid → bilinear upsampling → 0.5 → device→host; SAM 3 Meta's `Sam3Processor`; timed with a monotonic host clock (`time.perf_counter`) between two device synchronisations (it includes host work CUDA events cannot see); **20 warm-up + 200 timed** calls on the first test image by ISIC ID (the same image in every arm) |
+| `forward` | network only, at the native input size — YOLO26/U-Net: a fixed tensor (uniform random, seed 0); SAM 3: a pre-processed real test image + prompt — **50 warm-up (U-Net: 2,000, § 6.2) + 500 timed** iterations, each bracketed by a pair of `torch.cuda.Event`s on the current stream followed by a device synchronisation. CUDA events time execution on the device itself, unaffected by asynchronous kernel launches (more accurate than host timers for GPU work); synchronising after every iteration guarantees that each measurement is exactly one image with no queued work (true batch-1 latency) |
+| `end_to_end` | the deployed pipeline from a **decoded image in host memory to the binary mask at dataset resolution in host memory** (pre-processing, inference, post-processing, upsampling, threshold, device→host copy) — YOLO26 `predict(conf=0.001, retina_masks=True)` + top-1 instance mask (§ 14.4); U-Net colour conversion → area resize → scaling → host→device → forward → sigmoid → bilinear upsampling → 0.5 → device→host; SAM 3 Meta's `Sam3Processor`; timed with a monotonic host clock (`time.perf_counter`) between two device synchronisations (it includes host work CUDA events cannot see); **20 warm-up + 200 timed** calls on the first test image by ISIC ID (the same image in every arm) |
 | `end_to_end_dataset` | the same pipeline once on each of the **first 100 test images sorted by ISIC ID** (the same images for every model), after one untimed pass (cuDNN autotuning of every input shape) — input-dependent spread (image size, number of instances) |
 | SAM 3 only | `forward_cached_text`: forward with the prompt's text features precomputed (fixed-prompt deployment) |
 | Statistics | mean, SD, **median** (typical latency), P90, **P95** (the worst-case behaviour relevant for real time), P99, min, max; **FPS** = 1000 / mean latency (1000 / median also reported); raw per-iteration latencies kept for distribution plots |
 | **Peak VRAM** | (a) **allocator peak** — `torch.cuda.max_memory_allocated` during the timed loops, counters reset *after* warm-up (with `cudnn.benchmark` the warm-up peak is dominated by cuDNN's algorithm-search workspaces — e.g. ≈ 2.2 GB vs. ≈ 74 MB at steady state for YOLO26n-seg FP32 in a test — and is recorded separately) = the model's own footprint; (b) **process footprint** (`vram_process_peak_mb`) — device memory held by the benchmark process as reported by the driver (`nvidia-smi` delta: CUDA context, kernels and allocator cache included), sampled after each timed scope and maximised over the samples — an approximation of what a deployment GPU must provide, not a continuously tracked peak, and only meaningful on an otherwise idle GPU (the delta includes other processes); plus the CUDA-context size and the VRAM of the weights alone |
 | Host RAM | resident set size after model loading and after the benchmark, and its peak over the process lifetime (`getrusage`) |
 | Units | all memory and size figures in MiB (2²⁰ bytes) |
-| Contention | GPU utilisation, memory in use, SM clock and temperature sampled with `nvidia-smi` before and after each run; utilisation by other processes > 5 % flags the run `contended`; only uncontended measurements are reported (re-run on an idle GPU) |
+| Contention | GPU utilisation, memory in use, SM clock and temperature sampled with `nvidia-smi` before the worker starts and after it exits; a run is flagged `contended` if **other processes hold > 100 MiB** on the GPU (`CONTENTION_MEM_MIB`; the parent never creates a CUDA context, so `memory.used` is exactly the other processes' memory). Utilisation is recorded but not used — it still shows the previous worker's own load for ≈ 1 s after it exits (the earlier rule, utilisation > 5 %, flagged idle-GPU runs, § 14.8). Only uncontended measurements are reported |
 | Model size | parameters (fused and unfused), GFLOPs at the native input (+ at 640 px for the U-Net), checkpoint size, theoretical FP32/FP16 weight size |
 | FP16 | YOLO26/U-Net: weights and input cast to half (`model.half()`, `predict(half=True)`); SAM 3: autocast; identical conditions to FP32. FP16 halves weight memory; its latency benefit depends on whether inference is compute-bound (small models at batch 1 may gain nothing, § 6.1) |
 
@@ -887,7 +882,8 @@ and are reported for the deployed (Optimized) models.
 rather than the mean guarantees the frame budget for 95 % of frames.
 
 **Report with every latency:** the GPU model, driver, CUDA/cuDNN and PyTorch versions (stored in each efficiency JSON),
-the precision and the clock behaviour; state that all reported latencies are uncontended. Never quote the `infer_ms`
+the precision and the clock behaviour; state that all reported latencies are uncontended (final measurement: all 28
+configurations sequentially on one idle V100S, driver 580.178.04, 2026-10-17). Never quote the `infer_ms`
 column of the Phase 5a per-image CSVs: it is a by-product of the accuracy loop with arm-specific scopes, not a
 benchmark.
 
@@ -954,7 +950,10 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 5. **Different HPO algorithms and search spaces** (genetic algorithm vs. TPE; YOLO26 and U-Net 30 × 30, SAM 3 10 × 10) —
    each tunes its own recipe; the HPO effect is reported per arm rather than compared. In YOLO26 the Baseline values
    lie outside the search bounds (not candidates of the search), and the optimiser and cosine schedule cannot be
-   searched; in SAM 3 and the U-Net (re-run) the Baseline is the first trial (§ 5.4).
+   searched; in SAM 3 the Baseline is the first trial, in the U-Net the first trial is the Baseline with weight decay
+   clipped 0 → 10⁻⁶ (§ 5.4). The U-Net's search did not include the LR schedule or the loss weighting (constant LR,
+   equal BCE/Dice weights in every phase; a schedule-aware re-run was considered after the test results were known and
+   deliberately not executed, § 14.7).
 6. **Hardware dependence of latency** — absolute numbers are for the reported GPU (V100S) and software stack; ratios
    between models are more portable than absolute values. No CPU or embedded-GPU (e.g. Jetson) measurement is part of
    the protocol; claims about such devices must be framed as extrapolations from measured VRAM and latency.
@@ -1052,8 +1051,8 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 
 1. **Resumed training runs** — which runs were resumed (`run_state.json`, flagged in the report); YOLO26 resumes are not
    bit-identical, SAM 3 resumes are statistically equivalent.
-2. **Baseline outside the search bounds** — YOLO26 (lr0, weight decay); in the archived U-Net run weight decay
-   0 → 10⁻⁶. SAM 3's Baseline and the re-run U-Net's Baseline are the first trial. Origin of YOLO26's refined bounds; **state that the exploratory search used train/val
+2. **Baseline outside the search bounds** — YOLO26 (lr0, weight decay); U-Net weight decay 0 → 10⁻⁶ in the first
+   trial. SAM 3's Baseline is the first trial. Origin of YOLO26's refined bounds; **state that the exploratory search used train/val
    only**.
 3. **Best-epoch alignment** — reported validation metrics are those of the selected checkpoint (§ 6.1).
 4. **Optimistic bias of validation-based figures** — main claims rest on the Phase 5 test figures.
@@ -1063,7 +1062,8 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 7. **Effective batch** — YOLO26x trains with micro-batch 8: Ultralytics fell back from 16 to 8 in Phase 1 and in all
    five CV folds (logged as `batch_reduced` in each `run_state.json`); HPO trials and Phase 4 use 8 directly
    (`MICRO_BATCH`). Effective batch 64 everywhere (`nbs = 64`).
-8. **Contended efficiency runs** — none may be quoted; report GPU, driver, clock behaviour.
+8. **Contended efficiency runs** — none in the final measurement (§ 14.8); report GPU, driver (580.178.04), batch 1,
+   the U-Net's longer warm-up.
 9. **Different input resolutions and the U-Net resolution ceiling** — measured on the official test set: JSI 0.9934,
    DSC 0.9967, BIoU 0.9576, NSD 1.000, HD95 1.27 px (§ 6.2); the 256-px vs full-resolution validation check is done too.
 10. **Validation-metric resolution of the U-Net** (256 × 256 for selection).
@@ -1150,81 +1150,86 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 | 2026-10-05 21:29 | GPU unavailable to the SAM 3 container ("No CUDA GPUs are available") | Phase 2 fold 4 failed at its first step (no epoch run); restarted clean on 2026-10-06 15:42 and completed |
 | 2026-10-07 17:31 | GPU unavailable to YOLO26 (`phase2_pixels`) | pipeline stopped after all CV folds had trained; relaunched without `--force` (CV pixel re-score re-run) |
 | 2026-10-08 06:30 | GPU unavailable during YOLO26 Phase 3 (nano); 6 retries over 50 min, clean stop (exit 75) | relaunched 14:13 without `--force`; the interrupted trial re-ran from epoch 1 with the same (seeded) hyperparameters; no failed trial recorded |
-| 2026-10-09 06:33 | `unattended-upgrade` upgraded the NVIDIA driver 580.173.02 → 580.178 without a reboot | running containers unaffected; new GPU containers cannot start until the host is rebooted (`analysis_outputs/POST_YOLO26_RUNBOOK.md`) |
+| 2026-10-09 06:33 | `unattended-upgrade` upgraded the NVIDIA driver 580.173.02 → 580.178 without a reboot | running containers unaffected; new GPU containers could not start (driver/library mismatch) |
+| 2026-10-15 08:45 | GPU unavailable during YOLO26 xlarge HPO (trial 25) | NVIDIA kernel module reloaded ≈ 15:46 (580.178.04, no reboot); relaunched 15:50 with 24 trials complete; trial 25 re-ran from epoch 1; all later work on 580.178.04 |
 
 Every training run completed its full budget; resumptions are recorded in each `run_state.json` and reported by the
 final reports. Recommendation for future runs: hold the NVIDIA packages (`apt-mark hold`) during experiments.
 
-### 14.7 U-Net re-run with the LR schedule and the loss balance in the search space (2026-10-13)
+### 14.7 U-Net re-run with the LR schedule and the loss balance in the search space — prepared, then dropped (2026-10-13 → 2026-10-17)
 
-* **Why.** In the first complete U-Net run (archived as `logs/pipeline_final_v1_old/`), the LR schedule was part of
-  the locked base setup, so the Optimized model kept the Baseline's constant learning rate. Under that constant LR the
-  validation JSI still oscillates at the end of training (per-epoch SD 0.014–0.020 in the late 20-epoch windows),
-  losses are still decreasing at epoch 120 and the CV folds select late epochs (86–117); the tuned model also shifted
-  towards over-segmentation (sensitivity 0.880 → 0.913, specificity 0.963 → 0.931), which the loss balance controls.
-  The HPO could act on neither. The planned cosine *sensitivity* run (an environment switch applied to every phase) was
-  dropped: it would have changed the Baseline too.
-* **What changed** (`sandbox_unet`, commit `7a8f8cd`). The Baseline is unchanged (constant LR 1e-3, no warm-up,
-  weight decay 0, BCE + Dice with equal weights). These settings became default hyperparameters instead of locked
-  base-setup keys, and Phase 3 searches 13 hyperparameters: the 9 of the first run plus `lr_schedule`
-  ∈ {constant, cosine, plateau}, `lr_final_factor` ∈ [0.005, 0.10] (log; cosine end point and plateau floor),
-  `warmup_epochs` ∈ {0, …, 5} (linear from 0.1 · lr0) and `dice_weight` ∈ [0.5, 2.0] (log). Trial 1 trains the exact
-  Baseline (weight decay 0, not the clipped 10⁻⁶). Every run is seeded from the protocol seed before the network is
-  built (previously a CV fold's or HPO trial's initial weights depended on the runs before it in the same process).
-* **Verification (CPU, subset of the data).** Constant, cosine and plateau runs repeat bit-identically and resume
-  bit-identically after a simulated crash; a search interrupted after 3 trials and extended to 5 equals a fresh 5-trial
-  search (proposals and every trial's training); trial 1 trains the exact Baseline; Phase 4 and the HPO validator read
-  the new hyperparameter file.
-* **Run.** All five phases into a new `logs/pipeline_final_v1/` (≈ 5.5 GPU-hours; the Phase 0 cache is reused). On
-  2026-10-13 no new GPU container could start (NVIDIA driver/library mismatch, § 14.6), so the run follows the host
-  reboot after YOLO26 (`analysis_outputs/POST_YOLO26_RUNBOOK.md`, step 3). The archived run stays on disk; the
-  analysis notebooks read it until the re-run is complete and then compare the two (notebook 01 § 8).
-* **Reporting.** The re-run is the study's U-Net. Its Phases 1–2 use the archived run's protocol: Phase 1 and CV
-  fold 1 should reproduce the archived values (same seed, same initialisation, same LR and loss arithmetic), while CV
-  folds 2–5 start from a different initialisation (the seeding fix above), so their numbers differ within the usual
-  run-to-run variation. The archived run may be cited as the result of the narrower search, but never
-  mixed with the re-run in one table.
+* **Why it was considered.** In the U-Net run (trained 2026-10-02) the LR schedule was part of the locked base setup,
+  so the Optimized model kept the Baseline's constant learning rate. Under that constant LR the validation JSI still
+  oscillates at the end of training (per-epoch SD 0.014–0.020 in the late 20-epoch windows), losses are still
+  decreasing at epoch 120 and the CV folds select late epochs (86–117); the tuned model also shifted towards
+  over-segmentation (sensitivity 0.880 → 0.913, specificity 0.963 → 0.931), which the loss balance controls.
+* **What was prepared** (`sandbox_unet`, commits `addbfdb`, `7a8f8cd`, 2026-10-13): Phase 3 over 13 hyperparameters
+  (the 9 of § 5.2 plus `lr_schedule` ∈ {constant, cosine, plateau}, `lr_final_factor`, `warmup_epochs`, `dice_weight`),
+  trial 1 = the exact Baseline, per-run seeding; the run folder was renamed `pipeline_final_v1_old` to make room for the
+  re-run.
+* **Decision (2026-10-17): not executed.** The re-run was decided *after* the U-Net's test results were known, so it
+  would have been the only test-informed choice of the study; and the 256 × 256 oracle ceiling (§ 6.2) shows that the
+  U-Net's gap to SAM 3 is a model limitation, not something a schedule change is expected to remove. The study
+  reports the U-Net run as trained. Its folder carries its canonical name `logs/pipeline_final_v1/` again (renamed
+  back; nothing deleted), and commit `d61309d` reverted `addbfdb` and `7a8f8cd`, so `run_pipeline_unet.sh` and
+  `unet/{common,training,tune_unet,build_final_report}.py` are byte-identical to the code that trained the run
+  (commit `1c89e7b`). The prepared variant remains in the history.
+* **Reporting.** Limitation: the U-Net's search did not include the LR schedule or the loss weighting (§ 11).
+
+### 14.8 Idle-GPU efficiency and the busy-GPU rule (2026-10-17)
+
+* **Re-measurement.** Phase 5 of the three pipelines was re-run sequentially on GPU 0 with both GPUs otherwise idle
+  (`analysis_outputs/run_phase5_idle.sh`; GPU 1 at 0 MiB in all 499 monitor samples), driver 580.178.04. Test accuracy
+  was recomputed from the same weights and is unchanged (max |Δ| 0 for U-Net and SAM 3, 1.1 × 10⁻⁷ for YOLO26).
+* **U-Net warm-up.** Its first benchmark was timed before the GPU left its idle clock state (§ 6.2); the U-Net
+  efficiency was repeated with 2,000 warm-up forwards (now the default of `unet/benchmark_efficiency.py`): forward SD
+  0.071–0.106 ms in all four configurations.
+* **Busy-GPU rule.** The earlier rule (utilisation > 5 % in the snapshot before or after a benchmark) still flagged 17
+  of 28 idle-GPU benchmarks: nvidia-smi averages utilisation over its last sampling window and therefore still reports
+  the previous worker's own load for ≈ 1 s after it exits, while the memory held by other processes was 0 MiB in every
+  snapshot; flagged and unflagged runs of the same network agree in latency (e.g. SAM 3 FP32 601.78 vs 600.85 ms). The
+  rule now flags a run only if other processes hold > 100 MiB (`CONTENTION_MEM_MIB`, § 8), in `benchmark_efficiency.py`
+  and — re-applied to the stored snapshots — in `build_final_report.py` of the three repositories: 0 of 28 contended.
+* **Effect on the numbers.** Forward medians changed by ≤ 3.7 % relative to the first Phase 5 runs, the 100-image
+  end-to-end medians by ≤ 7.1 % (U-Net FP32: 5.05 → 4.69 ms).
 
 ---
 
-## 15. Empirical findings (status 2026-10-13)
+## 15. Empirical findings (final, 2026-10-17)
 
-Live numbers, tables and figures: `analysis_outputs/notebooks/` and `analysis_outputs/exports/` (regenerated by
-`analysis_outputs/refresh_all_analyses.sh`). Status: SAM 3 complete (Phases 1–5); YOLO26 complete through Phase 3
-except the xlarge HPO (in progress), Phases 4–5 pending. **U-Net: every number below comes from the archived run
-`pipeline_final_v1_old`** (Baseline identical to the re-run; HPO with the LR schedule locked to constant); the re-run
-with the extended search (§ 14.7) replaces them once it has finished.
+Every number, table and figure: `analysis_outputs/COMPREHENSIVE_TRAINING_REPORT_FINAL_V1.md` and
+`analysis_outputs/exports/` (regenerated by `analysis_outputs/refresh_all_analyses.sh`). All three arms are complete
+(Phases 1–5, `logs/pipeline_final_v1/`).
 
 1. **Accuracy.** 5-fold CV JSI (mean ± SD over folds): SAM 3 0.846 ± 0.005; YOLO26 0.833–0.835 (all five sizes);
-   U-Net 0.811 ± 0.009. Test set (n = 1,000, Optimized): SAM 3 JSI 0.849 [0.840, 0.857], DSC 0.910, HD95 53.3 px
-   (median 24.0); U-Net JSI 0.795 [0.783, 0.806], DSC 0.871, HD95 89.6 px (median 39.5). Paired SAM 3 − U-Net:
-   ΔJSI +0.054 [0.046, 0.063] (Optimized; better on 690 of 1,000 images), +0.057 [0.048, 0.068] (Baseline); Holm
-   p < 0.001 for JSI, DSC, HD95 and BIoU.
-2. **HPO did not transfer to the test set** (U-Net, SAM 3; YOLO26 pending). U-Net: validation gain +0.019 JSI
-   (1.35 × trial SD) → test ΔJSI −0.002 [−0.010, +0.006], worse boundaries (BIoU −0.020, HD95 +7.0 px) and an
-   operating-point shift toward over-segmentation (sensitivity 0.880 → 0.913, specificity 0.963 → 0.931; better on
-   the largest lesions, worse on small ones). SAM 3: validation gain +0.006 (0.56 × trial SD) → test ΔJSI −0.006
-   [−0.011, −0.0004] with a non-significant Wilcoxon test (534 images better, 466 worse): a tail effect concentrated
-   in the largest lesions (largest quintile 0.834 → 0.793). Mechanisms: (i) selection on 100 validation images (SE
-   ≈ 0.02 JSI) — winner's curse; (ii) SAM 3's 10-epoch trials favour aggressive learning rates (winner at 97 % of
-   the `lr_scale` and backbone-decay ranges), which overfit over the 30-epoch Phase 4 (peak at epoch 4, then −0.022
-   JSI; training loss 18.6 vs 31.0 in Phase 1); (iii) several YOLO26 winners sit within 5 % of the refined bounds.
-   The a-priori rule (compare the Optimized variants) is kept; both variants are reported.
-3. **Training dynamics.** SAM 3 converges fast (best epoch 7 of 30, then a plateau without decline). YOLO26's late
-   decline on the official validation split (mask mAP 0.024–0.068 below its peak) is absent on the CV folds
-   (0.008–0.015, best epochs 73–120): a training-to-validation distribution shift, not generic overfitting;
-   `best.pt` captures the peak. U-Net: under the constant LR the validation JSI oscillates to the end (per-epoch SD
-   0.014–0.020 in the late windows) and the CV folds select late epochs (86–117) — the motivation for searching the
-   LR schedule in the re-run (§ 14.7).
-4. **Scale invariance (YOLO26).** CV JSI 0.833–0.835 and CV mask mAP50-95 0.725–0.738 from nano to xlarge, while
-   the Phase 1 training time grows from 1.7 h to 10.5 h: model scale does not buy accuracy on this task.
-5. **Failure modes.** Accuracy falls for the largest (frame-filling) lesions in every arm; the U-Net is most affected
-   (largest quintile JSI 0.671 Baseline, 51 of 200 images below 0.5). This is **not** a resolution effect — the
-   256-px oracle ceiling is highest in that quintile (JSI 0.996) — but a failure of the model itself on frame-filling
-   lesions (plausibly the limited context of a 4-level, 16-filter network; not tested here). The U-Net's 256-px
-   resolution ceiling on the whole test set is JSI 0.993 / DSC 0.997 / BIoU 0.958 / HD95 1.3 px.
-6. **Efficiency (status).** All U-Net and the SAM 3 Baseline FP32 benchmarks ran on a busy GPU and are re-measured
-   on an idle GPU after YOLO26 finishes; SAM 3's FP16 autocast is 3.0× faster than FP32 at batch 1.
+   U-Net 0.811 ± 0.009. Test set (n = 1,000): SAM 3 JSI 0.855 [0.846, 0.863] (Baseline) / 0.849 [0.840, 0.857]
+   (Optimized); YOLO26 0.793–0.806 (Baseline) / 0.735–0.806 (Optimized); U-Net 0.797 [0.785, 0.809] / 0.795 [0.783,
+   0.806]. SAM 3 is better than every other system on 615–774 of 1,000 images (Baseline; Holm p < 0.001 for JSI, DSC,
+   HD95 and BIoU). YOLO26 and the U-Net have indistinguishable mean JSI on the test set but different error
+   distributions: the U-Net is better on typical images (median JSI 0.873 vs 0.841–0.856) and much worse on a tail of
+   large lesions; YOLO26 has worse Boundary IoU (0.292–0.322 vs 0.378, Baseline).
+2. **HPO did not transfer reliably to the test set.** Of 7 Optimized systems the paired test ΔJSI CI excludes zero in
+   the negative direction for 4 (SAM 3 −0.006, YOLO26-n −0.064, -s −0.009, -m −0.008), in the positive direction for 1
+   (YOLO26-x +0.011, BIoU +0.051) and includes zero for 2 (U-Net −0.002, YOLO26-l +0.002). U-Net: validation gain
+   +0.019 JSI (1.35 × trial SD) → no mean effect, worse boundaries (BIoU −0.020, HD95 +7.0 px), over-segmentation
+   shift. YOLO26-n: `best.pt` selected at epoch 12 of 120 on a one-epoch fitness spike (the epoch-120 checkpoint scores
+   0.788 [post-hoc]). Mechanisms: selection on 100 validation images (SE ≈ 0.02 JSI) — winner's curse; SAM 3's
+   10-epoch trials favour aggressive learning rates that overfit over 30 epochs. The a-priori rule (compare the
+   Optimized variants) is kept; both variants are reported.
+3. **Training dynamics.** SAM 3 converges fast (best epoch 7 of 30, then a plateau). YOLO26's late decline on the
+   official validation split is absent on the CV folds: a training-to-validation distribution shift (visible mostly in
+   boundary metrics: test BIoU ≈ 0.13 below CV), not generic overfitting. U-Net: under the constant LR the validation
+   JSI oscillates to the end and the CV folds select late epochs (86–117).
+4. **Scale invariance (YOLO26).** CV JSI 0.833–0.835 from nano to xlarge (spread 0.003 < every fold SD) while fused
+   parameters grow 23×, GFLOPs 35× and training cost 5.7× (25.7 → 145.4 GPU-h): model scale does not buy accuracy.
+5. **Failure modes.** The U-Net fails on large, frame-filling lesions (largest-quintile JSI 0.671 Baseline, 51 of 200
+   images below 0.5) — not a resolution effect (256-px oracle ceiling JSI 0.996 there; 0.993 / DSC 0.997 / BIoU 0.958
+   / HD95 1.3 px on the whole test set); YOLO26 is weakest on the smallest lesions and over-segments; SAM 3 is the most
+   uniform.
+6. **Efficiency (idle GPU, batch 1, V100S, Optimized, end-to-end median of 100 test images, FP32 / FP16).** SAM 3
+   607.00 / 202.16 ms (not real-time); YOLO26 11.56–23.25 / 12.32–17.96 ms; U-Net 4.69 / 5.13 ms — every YOLO26 size
+   and the U-Net meet 30 FPS at P95. SAM 3 costs 26–53× YOLO26's FP32 latency and 946× the U-Net's GFLOPs. FP16 pays
+   only for compute-bound models (forward speed-up SAM 3 3.07×, YOLO26-x 1.81×; U-Net and YOLO26-n/s slower).
 
 ---
 
@@ -1250,7 +1255,7 @@ The per-arm notes were written at different stages of the protocol. When writing
 | 14 | SAM 3 (header, § 3) | all parameters trainable, text encoder included; one FP32 epoch ≈ 106 min | text encoder frozen (486.8 M of 840.5 M trainable), FP16 AMP with FP32 master weights, backbone activation checkpointing off; ≈ 33.5 min per epoch — § 5.3, § 14.5 |
 | 15 | SAM 3 (header, § 1.3) | test mask = top-1 instance with score ≥ 0.5 | top-1 with score ≥ `PIXEL_CONF` = 0.001 (Phase 5 and the Phase 2 pixel re-score); 0.5 only in the training-time selection rule — § 14.4 |
 | 16 | YOLO26 § 5 | "all models were trained in FP32" | YOLO26 and the U-Net train in FP32; SAM 3 in FP16 AMP — § 7, § 14.5 |
-| 17 | U-Net (header) | 120 epochs, patience 25 | patience = epochs (120 / 120; HPO 30 / 30) — § 4; LR schedule, warm-up and Dice weight searched in Phase 3 of the re-run — § 14.7 |
+| 17 | U-Net (header) | 120 epochs, patience 25 | patience = epochs (120 / 120; HPO 30 / 30) — § 4; constant LR in every phase (a schedule-aware re-run was prepared and dropped — § 14.7) |
 | 18 | U-Net § 5 (all notes), earlier versions of this document | the constant LR is "the original Keras recipe" | the constant LR is the out-of-the-box recipe of the pre-refactor Keras pipeline script; the Baseline of this study by definition (§ 5.4) |
 | 19 | earlier versions of this document | SAM 3 "official recipe" defaults: warm-up 2 steps, FP16 "official path", batch 2, flips 0.5 | these are our base recipe; Meta's recipe uses warm-up 20, BF16, batch 1, no flips, 20 epochs, last checkpoint, detection-only (§ 5.4) |
 

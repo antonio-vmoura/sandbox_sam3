@@ -17,7 +17,9 @@
 > 3. **Training precision** — not "all models were trained in FP32": YOLO26 and the U-Net train in FP32, **SAM 3 in
 >    FP16 AMP**.
 > 4. **U-Net budget** — not "120 epochs, patience 25": **patience = epochs** (120 / 120; HPO 30 / 30), no early
->    stopping in any arm; an optional cosine-LR sensitivity run exists separately (`pipeline_unet_cosine_v1`).
+>    stopping in any arm; the U-Net keeps a constant LR in every phase (no cosine or schedule-aware run was executed).
+> 5. **Efficiency contention rule** — not "> 5 % utilisation": a run is contended only if other processes hold > 100 MiB
+>    on the GPU; all reported latencies come from the idle-GPU measurement of 2026-10-17 (shared notes § 14.8).
 >
 > Also superseded in these drafts (Appendix A, rows 1–13): the Roboflow export (2,547 / 100 / 994 images at 640 × 640)
 > → the official release, **2,594 / 100 / 1,000** images, longer side ≤ 1,024 px; ground truth = the **official masks**

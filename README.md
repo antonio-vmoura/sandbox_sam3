@@ -200,7 +200,7 @@ metrics are present as `NaN` (the CV and validation tables carry SAM 3's officia
   For reference (same GPU, smoke test): FP32 forward ≈ 590 ms (1.7 FPS), FP16 autocast ≈ 196 ms (5.1 FPS);
   weights 3.3 GB VRAM, forward peak 4.1 GB.
 
-* contended runs (another process using the GPU) are flagged — re-run them on an idle GPU.
+* contended runs (another process holding > 100 MiB on the GPU before or after the benchmark) are flagged — re-run them on an idle GPU.
 
 Note for the comparison: YOLO26 and the U-Net report thop GFLOPs. For convolutional networks thop and
 `FlopCounterMode` agree on convolutions and linear layers; thop cannot count SAM 3's attention products, which

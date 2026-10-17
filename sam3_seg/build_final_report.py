@@ -73,6 +73,19 @@ from segmentation_metrics import LOWER_IS_BETTER, PIXEL_CONF
 from train_cv_sam3 import VAL_KEYS
 from training import RUN_STATE_FILE
 
+
+#: Same rule as ``benchmark_efficiency.CONTENTION_MEM_MIB``: a benchmark is contended when other processes held
+#: memory on its GPU in the snapshot taken before or after its worker. Re-applied here to the recorded nvidia-smi
+#: snapshots, so results stored under the earlier utilisation rule (``contended`` field) are classified the same way.
+CONTENTION_MEM_MIB: int = 100
+
+
+def contended(e: dict[str, Any]) -> bool:
+    """``True`` if another process held GPU memory before or after the benchmark worker ran."""
+    return any(isinstance((e.get(k) or {}).get("mem_used_mb"), (int, float))
+               and e[k]["mem_used_mb"] > CONTENTION_MEM_MIB for k in ("gpu_before", "gpu_after"))
+
+
 VARIANTS: tuple[str, ...] = ("baseline", "optimized")
 PRECISIONS: tuple[str, ...] = ("fp32", "fp16")
 
@@ -368,13 +381,13 @@ class Report:
                     if e is None:
                         self.warnings.append(f"phase5/{variant}_{m}_{prec}: efficiency missing")
                         continue
-                    if e.get("contended"):
+                    if contended(e):
                         self.warnings.append(f"phase5/{variant}_{m}_{prec}: benchmark ran on a busy GPU")
                     fw, fc, ee = e["forward"], e["forward_cached_text"], e["end_to_end"]
                     mem, mdl = e["memory"], e["model"]
                     row = {
                         "variant": variant, "model": m, "precision": prec, "batch": 1,
-                        "gpu": e["env"].get("gpu"), "contended": e.get("contended"),
+                        "gpu": e["env"].get("gpu"), "contended": contended(e),
                         **{f"fwd_{k}": fw[k] for k in ("mean_ms", "std_ms", "median_ms", "p90_ms", "p95_ms", "p99_ms", "fps", "fps_median")},
                         **{f"fwd_cached_text_{k}": fc[k] for k in ("mean_ms", "median_ms", "p95_ms", "fps")},
                         **{f"e2e_{k}": ee[k] for k in ("mean_ms", "median_ms", "p95_ms", "p99_ms", "fps", "fps_median")},

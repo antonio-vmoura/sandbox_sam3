@@ -65,8 +65,9 @@ weights; ``vram_weights_mb`` is therefore the FP32 footprint in both rows).
 
 Isolation & fairness (as YOLO26): every configuration runs in a **fresh
 subprocess**; ``cudnn.benchmark=True`` (recorded); warm-up iterations are
-discarded; GPU utilisation of other processes is recorded before/after each
-run and a busy GPU is flagged ``contended``.
+discarded; GPU memory / utilisation / clocks are recorded before and after each
+run, and a GPU on which other processes hold memory is flagged ``contended``
+(see ``CONTENTION_MEM_MIB``).
 
 Outputs::
 
@@ -121,8 +122,13 @@ PRECISIONS: tuple[str, ...] = ("fp32", "fp16")
 #: 4: top-1 candidates >= PIXEL_CONF (0.001; was 0.5), as scored in Phase 5a.
 BENCHMARK_VERSION: int = 4
 
-#: GPU utilisation (%) above which a run is flagged as contended.
-CONTENTION_UTIL_PCT: int = 5
+#: Memory (MiB) used on the benchmark GPU by *other* processes above which a run is flagged as contended.
+#: The parent never creates a CUDA context and both snapshots are taken while no worker is alive (before it
+#: starts, after it has exited), so ``memory.used`` there is exactly what other processes hold — and any CUDA
+#: process holds at least its context (a few hundred MiB). Utilisation is recorded but not used: nvidia-smi
+#: averages it over its last sampling window, so for about a second after a worker exits it still shows that
+#: worker's own load (the earlier rule, utilisation > 5 %, flagged idle-GPU runs for this reason).
+CONTENTION_MEM_MIB: int = 100
 
 MB: float = 1024 ** 2
 
@@ -435,7 +441,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
 # Parent orchestration
 # ----------------------------------------------------------------------------
 def gpu_snapshot(device: str) -> dict[str, Any]:
-    """Utilisation / memory of the benchmark GPU right before a run (via nvidia-smi)."""
+    """Utilisation / memory / clocks of the benchmark GPU while no worker is alive (via nvidia-smi)."""
     try:
         out = subprocess.run(
             ["nvidia-smi", "-i", str(device), "--format=csv,noheader,nounits",
@@ -453,7 +459,7 @@ def gpu_snapshot(device: str) -> dict[str, Any]:
             snap[k] = float(snap[k])
         except (KeyError, ValueError):
             pass
-    snap["contended"] = isinstance(snap.get("util_pct"), float) and snap["util_pct"] > CONTENTION_UTIL_PCT
+    snap["contended"] = isinstance(snap.get("mem_used_mb"), float) and snap["mem_used_mb"] > CONTENTION_MEM_MIB
     return snap
 
 
@@ -481,8 +487,8 @@ def benchmark_one(
 
     before = gpu_snapshot(args.device)
     if before.get("contended"):
-        print(f"  [warn] GPU {args.device} is busy ({before['util_pct']:.0f}% util, "
-              f"{before['mem_used_mb']:.0f} MB used) — latencies will be flagged as contended")
+        print(f"  [warn] GPU {args.device} is busy ({before['mem_used_mb']:.0f} MB used by other processes, "
+              f"{before['util_pct']:.0f}% util) — latencies will be flagged as contended")
     with tempfile.TemporaryDirectory() as tmp:
         tmp_json = Path(tmp) / "result.json"
         image_list = Path(tmp) / "e2e_images.json"

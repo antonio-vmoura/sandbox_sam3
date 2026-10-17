@@ -16,7 +16,7 @@ Notebooks are numbered in run order (01 needs only Phase 1; 02–04 need Phase 5
 (e.g. `~/projects/` with `sandbox_yolo26/`, `sandbox_unet/`, `sandbox_sam3/` — any letter case), or run them from here:
 the three repositories are discovered in the current folder, its parent or its grandparent. The pipelines are read
 from `<repo>/logs/<PIPELINE_NAME>/` (default `pipeline_final_v1`); override with `$YOLO26_PIPELINE_DIR`,
-`$UNET_PIPELINE_DIR`, `$SAM3_PIPELINE_DIR`. Outputs go to `<folder holding the repositories>/analysis_outputs/exports/repo_notebook_04/`
+`$UNET_PIPELINE_DIR`, `$SAM3_PIPELINE_DIR`. Outputs go to `<folder holding the repositories>/sandbox_models_analysis/exports/repo_notebook_04/`
 (`tables/`, `figures/`, `data/`), never inside a repository.
 
 **Inputs.** Only Phase 5 outputs (`summary/*.csv`, `summary/final_results.json`, `phase5_test/per_image/*.csv`): no

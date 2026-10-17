@@ -4,7 +4,7 @@
 >
 > * **`analysis/methodology_notes.md`** in this repository — the authoritative protocol (identical in `sandbox_yolo26`,
 >   `sandbox_unet` and `sandbox_sam3`); its **Appendix A** maps every superseded statement of this draft to the final value;
-> * **`/home/antoniovinicius/projects/analysis_outputs/methodology/MASTER_METHODOLOGY_AND_FINDINGS.md`** — the
+> * **`/home/antoniovinicius/projects/sandbox_models_analysis/methodology/MASTER_METHODOLOGY_AND_FINDINGS.md`** — the
 >   paper-ready synthesis of methods and findings (with the per-model documents next to it).
 >
 > **Superseded points (Appendix A, rows 14–17):**

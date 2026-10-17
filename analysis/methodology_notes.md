@@ -14,7 +14,7 @@
 > this document never silently disagree.
 >
 > **Placeholders.** Everything written as **[RESULT]** or **[…]** must be filled in after the final run (most values
-> come from `analysis_outputs/`, produced by `04_cross_architecture_results.ipynb`). Numbers quoted from earlier or
+> come from `analysis_outputs/exports/`, produced by the paper workspace `analysis_outputs/notebooks/`). Numbers quoted from earlier or
 > preliminary runs are labelled as such.
 
 ---
@@ -35,6 +35,7 @@
 12. [Ready-to-adapt wording for the Methods section](#12-ready-to-adapt-wording-for-the-methods-section)
 13. [Artefact map: which file feeds which table or figure](#13-artefact-map-which-file-feeds-which-table-or-figure)
 14. [Committee-compliance checklist, disclosure checklist and audit changelog](#14-committee-compliance-checklist-disclosure-checklist-and-audit-changelog)
+15. [Empirical findings (status 2026-10-13)](#15-empirical-findings-status-2026-10-13)
 - [Appendix A — Statements in the per-arm notes that the final protocol supersedes](#appendix-a--statements-in-the-per-arm-notes-that-the-final-protocol-supersedes)
 - [Appendix B — Suggested references](#appendix-b--suggested-references)
 
@@ -64,18 +65,20 @@ output schema. Only the model, its native input size, its default recipe and its
 | Initialisation | COCO-pretrained Ultralytics checkpoints `yolo26{n,s,m,l,x}-seg.pt`; all layers trainable (transfer learning) | random (Keras initialisers), no pretraining | official SAM 3 checkpoint (`facebook/sam3`); fine-tuning of everything except the text encoder (frozen: the prompt is constant) |
 | Native input | 640 px (letterbox), single class (`nc = 1`) | 256 × 256 | 1008 × 1008, text prompt "skin lesion" |
 | Training code | Ultralytics 8.4.21 | own (bit-exact resumable) | Meta's official SAM 3 trainer, wrapped (`ProtocolTrainer`), vendored code unmodified |
-| Default recipe (Baseline) | Ultralytics defaults | original Keras baseline | Meta's official fine-tuning recipe |
-| HPO | Ultralytics genetic algorithm (seeded `SeededTuner`), 30 trials × 30 epochs | Optuna TPE (seeded per proposal), 30 × 30 | Optuna TPE (seeded per proposal), 10 × 10 |
+| Default recipe (Baseline) | Ultralytics 8.4.21 defaults, with an explicit optimiser (MuSGD), a cosine schedule, FP32 and 120 epochs (§ 5.4) | lightweight U-Net variant with its out-of-the-box Keras recipe: constant LR 1e-3, no weight decay, BCE + Dice (§ 5.4) | Meta's official fine-tuning recipe, adapted to segmentation, a V100 and the protocol (§ 5.4) |
+| HPO | Ultralytics genetic algorithm (seeded `SeededTuner`), 30 trials × 30 epochs, 15 hyperparameters | Optuna TPE (seeded per proposal), 30 × 30, 13 hyperparameters incl. the LR schedule and the Dice weight | Optuna TPE (seeded per proposal), 10 × 10, 6 hyperparameters |
 | Training budget (Ph 1, 2, 4) | 120 epochs, no early stopping | 120 epochs, no early stopping | 30 epochs, no early stopping |
 | Training precision | FP32 (`amp = False`) | FP32 | FP16 mixed precision (official AMP path: FP32 master weights, dynamic loss scaling) |
 | Model selection (`best.pt`) | Ultralytics fitness (box + mask mAP50-95) on val; ties → latest epoch | per-image mean JSI on val (at 256 × 256); strict improvement, ties → earliest epoch | per-image mean JSI on val (dataset resolution); strict improvement, ties → earliest epoch |
 | Determinism | deterministic algorithms requested (warn-only); resume not bit-identical | **bit-exact** (incl. resume, any worker count) | bit-exact only in strict mode (verified under the earlier FP32 setup); the study uses warn-only + FP16 AMP → runs are statistically equivalent, not bit-identical |
 
 **Computing environment.** Docker image `nvidia/cuda:12.1.0-devel-ubuntu22.04`, Python 3.11, PyTorch 2.5.1 /
-torchvision 0.20.1 / torchaudio 2.5.1 (CUDA 12.1 builds) in all three arms (§ 10). Training: [YOLO26: one or two
-NVIDIA Tesla V100S 32 GB with DDP — state what the final run used]; U-Net and SAM 3: one V100S. Phase 5 inference
-and profiling: a single GPU [Tesla V100S-PCIE-32GB, driver …]; host CPU [Intel Xeon Gold 5220R]. Library versions
-and the GPU model are recorded in every output file.
+torchvision 0.20.1 / torchaudio 2.5.1 (CUDA 12.1 builds) in all three arms (§ 10). Training: **one NVIDIA Tesla V100S-PCIE-32GB per
+arm** (YOLO26 on GPU 0, U-Net then SAM 3 on GPU 1; no DDP in the final runs). Phase 5 inference and profiling: a
+single Tesla V100S-PCIE-32GB, NVIDIA driver 580.173.02 (CUDA 12.1 user space in the containers, cuDNN 9.1); host
+CPU Intel Xeon Gold 5220R (48 logical CPUs). Library versions and the GPU model are recorded in every output file. The
+host driver was upgraded to 580.178 by `unattended-upgrade` on 2026-10-09 without a reboot (§ 14.6): every result
+of this study was produced with the 580.173.02 kernel module.
 
 ---
 
@@ -229,7 +232,7 @@ aside by `--force` and are not part of the final `logs/pipeline_final_v1` result
 |---|---|---|
 | YOLO26 | Median epoch-to-epoch change of the validation fitness **0.04–0.06** on the 100-image split vs. **0.014** on a 530-image CV fold. **Every** Phase 1 run stopped between epochs **50 and 82** of 120. | Training stopped at a still-high learning rate, *before* the cosine decay and the final `close_mosaic` epochs (mosaic off in the last 10), and `best.pt` sat on a noise spike. |
 | U-Net | Baseline **and** Optimized stopped at epoch **81** of 120 (best epoch 56); **10 of 30** HPO trials stopped before their 30 epochs; meanwhile **4 of 5** CV folds (≈ 530 validation images) ran the full budget and kept improving until epochs **96–118**. | The HPO winner (val JSI **0.811** vs. **0.782** for the defaults) **did not transfer**: the Optimized U-Net was *worse* on the test set (ΔDSC = **−0.0052**, Wilcoxon p = 7.5 × 10⁻⁹) — the signature of selecting on validation noise. |
-| SAM 3 | Not run with early stopping; disabled pre-emptively for the same reason (same 100-image split). Note that Meta's official recipe validates only every second epoch, skips the first validation and **selects nothing**; the study's wrapper validates every epoch, which per-epoch selection requires (§ 6.3). | — |
+| SAM 3 | Not run with early stopping; disabled pre-emptively for the same reason (same 100-image split). Note that Meta's official recipe validates only every 10th epoch (our base recipe file: every 2nd), skips the first validation and **selects nothing** (it keeps the last checkpoint); the study's wrapper validates every epoch, which per-epoch selection requires (§ 6.3). | — |
 
 **Why disabling it makes the comparison fairer.** (i) Every model of an arm receives the same, complete compute
 budget, so differences are not artefacts of *when* noise stopped a run; (ii) schedules that depend on the epoch count
@@ -276,7 +279,11 @@ would have trained the Baseline with a different optimiser from the Optimized mo
 for the tuned values to take effect), confounding the HPO effect with the optimiser. With MuSGD fixed, the Baseline
 trains with the framework defaults **lr0 = 0.01, lrf = 0.01, momentum = 0.937, weight decay = 5 × 10⁻⁴**, the Optimized
 models with the HPO values; the training logs were checked to report `optimizer: MuSGD(lr=…, momentum=…)` with the
-expected values.
+expected values. **Disclosure:** on this dataset every run stays below the 10⁴-iteration threshold
+(⌈2,594 / 64⌉ = 41 iterations per epoch × 120 = 4,920; 30-epoch trials and CV folds fewer), so `auto` would have
+resolved to **AdamW, lr 0.002, β₁ 0.9** in every phase — the YOLO26 Baseline therefore does not use the
+out-of-the-box optimiser, and its cosine schedule is likewise a choice of ours (Ultralytics' default is linear). Both are
+locked in every phase (§ 5.4).
 
 **HPO algorithm (Ultralytics genetic algorithm, re-implemented with a seeded RNG).** The first trial evaluates the
 default hyperparameters clipped to the search bounds (lr0 0.01 → 0.004 and weight decay 5 × 10⁻⁴ → 1 × 10⁻⁴, both
@@ -348,12 +355,15 @@ run-to-run differences that propagate to later proposals.
 BatchNorm and ReLU (16, 32, 64, 128 filters), each followed by 2 × 2 max-pooling and dropout; a 256-filter bottleneck;
 four decoder levels with a 3 × 3 transposed convolution (stride 2), concatenation with the skip connection, dropout and
 a convolution block; a 1 × 1 convolution with sigmoid output. One network width only (16 base filters, the original
-baseline) — no width scaling comparable to the YOLO26 sizes.
+baseline) — no width scaling comparable to the YOLO26 sizes. This is a **lightweight U-Net variant**, not
+Ronneberger et al.'s network (64 base filters, no BatchNorm, unpadded convolutions with overlap-tile, weighted
+cross-entropy, SGD with momentum 0.99) — § 5.4.
 
 | Base setup (fixed) | Value |
 |---|---|
-| Loss | BCE (pixel mean) + (1 − soft Dice), Dice over the whole batch with smoothing 10⁻⁶ — the original Keras `bce_dice_loss`; BCE computed from logits (numerically stable; Keras additionally clips probabilities to [10⁻⁷, 1 − 10⁻⁷]) |
-| Optimiser / schedule | AdamW (decoupled weight decay ≡ Keras `Adam(weight_decay=…)`), ε = 10⁻⁷ (Keras default), β₂ = 0.999, **constant learning rate** (as in the original baseline) |
+| Loss | BCE (pixel mean) + `dice_weight` × (1 − soft Dice), Dice over the whole batch with smoothing 10⁻⁶ — at `dice_weight` = 1 (the Baseline) exactly the Keras `bce_dice_loss`; BCE computed from logits (numerically stable; Keras additionally clips probabilities to [10⁻⁷, 1 − 10⁻⁷]). The loss family is fixed; its Dice weight is a hyperparameter |
+| Optimiser | AdamW (decoupled weight decay ≡ Keras `Adam(weight_decay=…)`), ε = 10⁻⁷ (Keras default), β₂ = 0.999 |
+| LR schedule | a hyperparameter (table below). Baseline: **constant** learning rate, no warm-up. The rate of every epoch is a pure function of the protocol, the epoch and the checkpointed history (bit-exact resume): optional linear warm-up from 0.1 · lr0 over `warmup_epochs`; then `constant`, `cosine` (per epoch to lr0 · `lr_final_factor`) or `plateau` (× 0.5 after 5 post-warm-up epochs without a strict improvement of the validation JSI, as Keras' `ReduceLROnPlateau` without cooldown, floored at lr0 · `lr_final_factor`; factor and patience fixed in the base setup) |
 | Input / batch / budget | 256 × 256, batch 16, 120 epochs, patience 120 (HPO 30 / 30) |
 | Numerics / selection | FP32, seed 0, deterministic algorithms; after every epoch the per-image mean JSI on the validation set (at 256 × 256, same definitions as § 7) is computed; `best.pt` replaced only by a strictly better epoch (ties keep the earliest) |
 
@@ -367,23 +377,33 @@ interpolated bilinearly. Visual inspection confirmed image–mask alignment.
 | Tuned (Phase 3) | Default (Baseline = Keras) | Range |
 |---|---|---|
 | `lr0` | 1e-3 | [1e-4, 1e-2] log |
-| `weight_decay` | 0 | [1e-6, 1e-3] log |
+| `weight_decay` | 0 | [1e-6, 1e-3] log (trial 1 trains the exact 0) |
 | `beta1` (AdamW) | 0.9 | [0.80, 0.95] |
+| `lr_schedule` | constant | {constant, cosine, plateau} |
+| `lr_final_factor` | 0.01 (inert under constant) | [0.005, 0.10] log |
+| `warmup_epochs` | 0 | 0–5, integer |
+| `dice_weight` | 1.0 | [0.5, 2.0] log |
 | `dropout` | 0.1 | [0.10, 0.40] |
 | `degrees` / `translate` / `scale` | 15 / 0.1 / 0.1 | [0, 45] / [0, 0.20] / [0, 0.30] |
 | `fliplr` / `flipud` (probabilities) | 0.5 / 0.5 | [0, 0.50] each |
 
-**Baseline outside the search bounds.** The default weight decay 0 cannot be represented on the logarithmic scale
-(lower bound 10⁻⁶); the first trial evaluates the Baseline clipped to the bounds (weight decay 10⁻⁶ — negligible, but
-formally a different configuration). As for YOLO26, the Baseline is therefore not itself a candidate. The log scale was
-kept because plausible weight-decay values span several orders of magnitude.
+**The Baseline is trial 1.** The first trial trains the **exact** Baseline hyperparameters (weight decay 0, constant
+LR, no warm-up, Dice weight 1, …), so the search starts from the Baseline itself and can only select something else by
+beating it. The default weight decay 0 cannot be represented on the logarithmic scale (lower bound 10⁻⁶): Optuna's
+record of trial 1 — used only by the TPE model — stores 10⁻⁶, while the training, `tune_results.csv` and
+`best_hyperparameters.yaml` use the value actually trained (0). The log scale was kept because plausible weight-decay
+values span several orders of magnitude. (The archived first run, `pipeline_final_v1_old`, trained the clipped
+10⁻⁶ in its first trial and kept the LR schedule locked to constant — § 14.7.)
 
 **HPO algorithm and reproducibility.** The HPO framework of the original U-Net pipeline was retained: Optuna TPE with
 SQLite storage, 30 trials of 30 epochs, the first **10** trials random (Optuna's default start-up), fitness = validation
 per-image mean JSI of the trial's best epoch. Because the sampler's random state is not persisted, a search resumed
 with a re-created `TPESampler(seed)` would propose different configurations; therefore a **fresh TPE sampler seeded
 with (seed × 1,000,003 + i) mod 2³²** is installed before every proposal *i* (*i* = number of completed trials; the first
-proposal is fixed to the clipped Baseline). TPE builds its model only from completed trials, so proposal *i* is a
+proposal is fixed to the Baseline). Every training run — each HPO trial and each CV fold included — seeds the Python,
+NumPy and PyTorch generators from the protocol seed before building the network, so its initial weights do not depend
+on what ran earlier in the same process (a trial started after a restart is identical to the same trial in an
+uninterrupted search). TPE builds its model only from completed trials, so proposal *i* is a
 deterministic function of (seed, *i*, completed history); proposals are recorded and a resumed or retried proposal is
 verified to be identical (otherwise the search stops). Two independent executions produced identical histories.
 
@@ -401,16 +421,17 @@ to an uninterrupted one.
 
 | Decision | Value | Reason |
 |---|---|---|
-| Model / recipe | official SAM 3 image model and fine-tuning recipe (frozen copy `sam3_base_recipe.yaml`, never edited; per-run configs written to the run folder), **486.8 M of 840.5 M parameters trainable**: the 353.7 M-parameter text encoder is **frozen** (`freeze_text`) | the prompt `"skin lesion"` is constant, so the text encoder only ever produces one embedding; the detector layers that consume it stay trainable (§ 14.5) |
+| Model / recipe | official SAM 3 image model and trainer; base recipe `sam3_base_recipe.yaml` (frozen, never edited; per-run configs written to the run folder) — Meta's fine-tuning recipe with segmentation enabled and the deviations of § 5.4 (warm-up 2, cooldown 30, batch 2, `o2m_weight` 1.0, horizontal flip), **486.8 M of 840.5 M parameters trainable**: the 353.7 M-parameter text encoder is **frozen** (`freeze_text`) | the prompt `"skin lesion"` is constant, so the text encoder only ever produces one embedding; the detector layers that consume it stay trainable (§ 14.5) |
 | Prompt | `"skin lesion"` (single category) | clinically neutral (most ISIC lesions are benign; earlier experiments used the misleading "skin cancer") |
 | Input | 1008 × 1008 | fixed by the architecture |
-| Precision / batch | **FP16 mixed precision** (`amp`, official recipe path: autocast float16, FP32 master weights, `GradScaler`; the V100 has no BF16), batch 2, activation checkpointing **off** in the ViT and text backbones (still on where the detector requires it), no gradient accumulation | throughput: ≈ 33.5 min per epoch instead of ≈ 1.8 h (§ 14.5); memory probe below |
+| Precision / batch | **FP16 mixed precision** (`amp` through the official AMP path: autocast float16, FP32 master weights, `GradScaler`; Meta's recipe uses BF16, which the V100 lacks), batch 2 (Meta: 1), activation checkpointing **off** in the ViT and text backbones (still on where the detector requires it), no gradient accumulation | throughput: ≈ 33.5 min per epoch instead of ≈ 1.8 h (§ 14.5); memory probe below |
 | Budget | **30 epochs**, patience 30 (no early stopping) | fixed when one epoch took ≈ 1.8 h (official FP32 setup); 120 epochs would have taken > 8 days per run and the HPO several months |
 | HPO | **10 trials × 10 epochs**, Optuna TPE (Optuna 5.0.0, SQLite), **5** start-up trials, seeded per proposal (same formula as the U-Net) | compute; a foundation model starts from strong weights |
 | Selection | `best.pt` = best validation per-image JSI (strict improvement, ties earliest), the shared metric code | as the U-Net |
 | Prediction rule | **top-1** (highest-score) instance among those with score ≥ `PIXEL_CONF` = 0.001 (the YOLO26 rule and constant, shared `segmentation_metrics`) for Phase 5, the Phase 2 pixel re-score of every fold's `best.pt` and the end-to-end benchmark; the training-time validation JSI that selects `best.pt` (Phases 1–4, including the Phase 2 CV folds) keeps the union rule, so all training phases select identically (§ 14.4) (score = sigmoid(logit) × presence; top 100 instances per image as in the official prediction dump) | one lesion per image (ISIC 2018 Task 1); selection keeps SAM 3's default 0.5 |
 
-**Default (official recipe) hyperparameters.** `lr_scale` 0.1, which scales the recipe's base learning rates
+**Default (base recipe) hyperparameters.** Meta's values except the warm-up and the flip (Meta: 20 warm-up steps, no
+flip; § 5.4). `lr_scale` 0.1, which scales the recipe's base learning rates
 8 × 10⁻⁴ (detector transformer), 2.5 × 10⁻⁴ (vision backbone) and 5 × 10⁻⁵ (text encoder) to the **effective defaults
 8 × 10⁻⁵, 2.5 × 10⁻⁵ and 5 × 10⁻⁶**; AdamW weight decay 0.1; layer-wise LR decay of the vision trunk 0.9;
 inverse-square-root schedule with **2 warm-up optimiser steps**; horizontal-flip probability 0.5; random-resize scale
@@ -430,8 +451,9 @@ Hungarian matcher, optimiser type, batch, budget and precision belong to the bas
 
 * **Warm-up in steps.** One epoch = **1,297** optimiser steps (2,594 images / batch 2); the recipe's 2 steps are
   effectively no warm-up, hence a range up to 1,000 steps (≈ 0.8 epoch).
-* **All defaults lie inside the bounds**, so the first trial evaluates the Baseline configuration **itself** — unlike
-  YOLO26 and the U-Net, whose Baselines are clipped.
+* **All defaults lie inside the bounds**, so the first trial evaluates the Baseline configuration **itself** (as the
+  U-Net's first trial; unlike YOLO26, whose Baseline is clipped). Meta's own warm-up (20 steps) and no-flip setting
+  are inside the ranges too.
 * **Loss weights excluded** — including the focal γ searched by an earlier SAM 3 tuner — for consistency with the
   strict search spaces of the other arms.
 * **5 start-up trials (Optuna default 10).** With 10 trials the default would leave no trial to TPE (defaults + 9
@@ -461,6 +483,98 @@ checkpointing off: ≈ 26.9 GB peak, ≈ 2,012 s per epoch.*
 **Compute.** Official FP32 setup: ≈ 1.8 h per epoch (≈ 3 weeks for Phases 1–4 on one GPU). Final setup (§ 14.5):
 ≈ 33.5 min per epoch including validation and checkpointing (SD < 6 s; Phase 1 = 1,012.6 min) — still about two orders
 of magnitude more than the U-Net.
+
+---
+
+### 5.4 Reference recipes, Baseline fidelity and HPO scope (audit 2026-10-13)
+
+**Principle.** Phase 1 (and the Phase 2 CV) trains each architecture with its **reference recipe** — the
+configuration proposed by the authors or the official release — under the common protocol; anything that is meant to
+*improve* a model belongs to the HPO (Phases 3–4). The audit below compares, parameter by parameter, the reference,
+our Baseline and what Phase 3 could change. Full tables:
+`analysis_outputs/methodology/LITERATURE_VS_BASELINE_AND_HPO_AUDIT.md` and `DEVIATIONS_AND_FIDELITY_AUDIT.md`.
+References: U-Net — Ronneberger et al. (MICCAI 2015); SAM 3 — Meta's release (`facebook/sam3`, `model_builder.py`,
+fine-tuning recipe `roboflow_v100_full_ft_100_images.yaml`); YOLO26 — Ultralytics 8.4.21 defaults.
+
+**U-Net** (reference: Ronneberger et al., 2015)
+
+| Parameter | Reference | Our Baseline | Phase 3 (U-Net re-run) |
+|---|---|---|---|
+| Width / parameters | 64 → 1024 filters (≈ 31 M) | 16 → 256 (2.16 M) | fixed |
+| Normalisation / dropout | none / end of contracting path | BatchNorm after every conv / p 0.1 after every pooling and concatenation | dropout searched [0.10, 0.40] |
+| Convolutions / up-sampling | unpadded 3 × 3 + cropping / 2 × 2 up-conv | padded 3 × 3 / 3 × 3 transposed conv | fixed |
+| Input | 572 × 572 tiles → 388 × 388 (overlap-tile) | whole image at 256 × 256 | fixed |
+| Loss | softmax + cross-entropy with a border weight map | BCE + soft Dice (equal weights) | Dice weight searched [0.5, 2.0] |
+| Optimiser | SGD, momentum 0.99, batch 1 | AdamW (β₁ 0.9), batch 16 | β₁ searched [0.80, 0.95]; type fixed |
+| Learning rate, schedule, weight decay, epochs | not reported | lr 1e-3, constant, no warm-up, wd 0, 120 epochs | lr0, schedule (constant / cosine / plateau), final factor, warm-up, wd searched |
+| Augmentation | shifts, rotations, grey values, elastic deformations | rotation 15°, shift 0.1, zoom 0.1, flips 0.5 / 0.5 | all five searched; elastic not available |
+
+*Rationale (paper-ready).* "The U-Net arm is a lightweight variant of the original architecture (16 instead of 64 base
+filters, batch normalisation, padded convolutions, a 256 × 256 input) trained from scratch with a standard recipe
+(AdamW, learning rate 10⁻³, binary cross-entropy plus Dice loss, rotation, shift, zoom and flip augmentation). It
+represents a classic, compact segmentation baseline rather than a re-implementation of Ronneberger et al.; the original
+paper does not report a learning rate, schedule or training length, so the Baseline uses a constant learning rate and
+the hyperparameter search may replace it with a cosine or plateau schedule. The resolution cost of the 256 × 256 input
+is bounded by an oracle: the reference masks themselves, passed through the same up-sampling, reach a Jaccard index of
+0.993 on the test set."
+
+**SAM 3** (reference: Meta's official fine-tuning recipe and model builder)
+
+| Parameter | Reference | Our Baseline | Phase 3 |
+|---|---|---|---|
+| Model / weights / resolution | `facebook/sam3`, 1008 px | same | fixed |
+| Task / losses | detection only (segmentation losses given as a commented template) | segmentation on, with the template's loss weights (mask 200, Dice 10, semantic 20 / 30); `o2m_weight` 1.0 (Meta 2.0) | fixed |
+| Trainable parts | all (text encoder at its own LR) | text encoder frozen (486.8 M of 840.5 M trainable) | fixed |
+| Precision | BF16 AMP | FP16 AMP (FP32 master weights, loss scaling) | fixed |
+| Optimiser, LRs, layer decay, weight decay, clipping | AdamW; lr_scale 0.1 (8e-5 / 2.5e-5 / 5e-6); 0.9; 0.1; max-norm 0.1 | same | lr_scale, layer decay, weight decay searched |
+| Schedule | inverse-sqrt, warm-up 20, cooldown 20 | inverse-sqrt, warm-up 2, cooldown 30 | warm-up searched [1, 1000] (20 reachable) |
+| Batch / epochs | 1 / 20 | 2 / 30 | fixed |
+| Augmentation | random resize (min 480), no flip | + horizontal flip 0.5 | flip searched [0, 0.5] (0 reachable); resize minimum searched |
+| Validation / checkpoint | every 10 epochs / last | every epoch / best validation JSI | fixed |
+
+*Rationale (paper-ready).* "SAM 3 was fine-tuned with Meta's official trainer and recipe (optimiser, learning rates,
+layer-wise decay, weight decay, gradient clipping, scheduler and detection losses), enabling the segmentation losses
+with the weights provided in the recipe's template, since the task is segmentation. Three adaptations were required by
+the hardware and the study design: mixed precision in float16 instead of bfloat16, which the V100 does not support; a
+frozen text encoder, because the prompt ("skin lesion") is constant and the encoder would only ever produce one
+embedding; and validation after every epoch with best-checkpoint selection, as in the other arms. The base recipe
+also used a batch of 2, a 2-step warm-up, horizontal flips and 30 epochs; the warm-up and the flip probability were
+then searched by the HPO, whose ranges contain Meta's values."
+
+**YOLO26-seg** (reference: Ultralytics 8.4.21 defaults)
+
+| Parameter | Reference | Our Baseline | Phase 3 |
+|---|---|---|---|
+| Model / weights / input / labels | COCO `yolo26*-seg.pt`, 640 px letterbox | same (`nc = 1`; polygons from the official masks) | fixed |
+| Optimiser | `auto` → AdamW, lr 0.002, β₁ 0.9 on this dataset (< 10⁴ iterations) | **MuSGD**, lr0 0.01, momentum 0.937, wd 5e-4 | type fixed; lr0 [0.001, 0.004], momentum, wd [1e-6, 1e-4] searched (defaults 0.01 and 5e-4 excluded) |
+| Schedule | linear to lrf 0.01, warm-up 3 epochs | **cosine** to lrf 0.01, warm-up 3 epochs | cosine fixed; lrf, warm-up searched |
+| Precision / epochs | AMP / 100 (patience 100) | **FP32** / 120 (patience 120) | fixed |
+| Batch | 16 (nbs 64) | 16 (xlarge 8) (nbs 64) | fixed |
+| Loss gains | box 7.5, cls 0.5, dfl 1.5 | same | cls, dfl searched; box fixed |
+| Augmentation | Ultralytics defaults (mosaic 1.0, HSV, translate 0.1, scale 0.5, flip-LR 0.5, erasing 0.4, `close_mosaic` 10) | same | HSV, translate, flip-UD, mosaic, mixup, copy-paste searched; scale, flip-LR, rotation, shear, erasing, `close_mosaic` fixed |
+| Selection / prediction | fitness = box + mask mAP50-95 / conf 0.25, all instances | same fitness / top-1 instance ≥ 0.001, full-resolution masks | fixed |
+
+*Rationale (paper-ready).* "YOLO26-seg was trained with the Ultralytics defaults (COCO-pretrained weights, 640 px input,
+default augmentation and loss gains, default learning rate and momentum) with four changes applied identically to the
+Baseline and the tuned models: an explicit optimiser (MuSGD), because the framework's automatic choice ignores the
+configured learning rate and momentum and would have made the tuned values ineffective (on this dataset it would have
+selected AdamW with a learning rate of 0.002); a cosine learning-rate schedule; full-precision training, because the
+largest model diverged in mixed precision; and the 120-epoch budget of the other arms. Pixel masks are taken from the
+highest-scoring instance, as the task has one lesion per image."
+
+**HPO scope (what Phase 3 could change).**
+
+| | Searched | Locked in every phase | Reference value excluded by the ranges |
+|---|---|---|---|
+| U-Net (re-run) | lr0, weight decay, β₁, **LR schedule, final LR factor, warm-up, Dice weight**, dropout, rotation, shift, zoom, flip-LR, flip-UD (13) | architecture, optimiser type, loss family, input, batch, budget, precision | none (trial 1 = the exact Baseline) |
+| U-Net (archived run) | the same without schedule, final factor, warm-up and Dice weight (9) | + constant LR, equal loss weights | weight decay 0 (trial 1 clipped to 10⁻⁶) |
+| SAM 3 | lr_scale, weight decay, layer decay, warm-up, flip, resize minimum (6) | precision, frozen text encoder, batch, epochs, scheduler type and cooldown, losses, `o2m_weight` | none (Meta's warm-up 20 and no flip are reachable) |
+| YOLO26 | lr0, lrf, momentum, weight decay, warm-up, cls, dfl, HSV × 3, translate, flip-UD, mosaic, mixup, copy-paste (15) | optimiser, cosine schedule, `close_mosaic`, epochs, batch, image size, precision, box gain, scale, flip-LR, rotation, shear, erasing | lr0 0.01, weight decay 5e-4 (trial 1 clipped); dfl 1.5 at the upper bound |
+
+*Decision (2026-10-13).* SAM 3 and YOLO26 are **not** re-trained: their Baselines follow the official releases except
+for the adaptations listed above, all justified by the hardware, the task or the need for the tuned values to take
+effect, and disclosed. The U-Net is re-run (all five phases) with the Baseline unchanged and the LR schedule, warm-up,
+final LR factor and Dice weight added to the search (§ 14.7).
 
 ---
 
@@ -553,8 +667,20 @@ of magnitude more than the U-Net.
   small or intricate lesions — small compared with typical inter-model differences, but to be stated. Nearest-neighbour
   upsampling of the mask gives a lower ceiling (DSC 0.9951 on 199 test images), which is why the pipeline upsamples the
   probability map bilinearly. The oracle also verifies the alignment of the inference and scoring path (a one-pixel
-  shift or a flip would lower its DSC drastically). **[RESULT: re-measure on the official 1,000-image test set at the
-  dataset resolution — the ceiling is expected to be lower now that images keep up to 1,024 px.]**
+  shift or a flip would lower its DSC drastically). **Official test set (1,000 images, dataset resolution; measured
+  2026-10-13 with `unet/oracle_resolution_ceiling.py`, outputs in `logs/pipeline_final_v1/oracle_ceiling/`):** the
+  cached 256 × 256 reference mask through `inference.predict_full_res`'s upsampling (bilinear, `align_corners=False`,
+  > 0.5), scored against the official mask with the shared metrics, reaches **JSI 0.9934 [0.9930, 0.9938], DSC 0.9967
+  [0.9965, 0.9969], Boundary IoU 0.9576 [0.9563, 0.9589], NSD 1.0000 (min 0.990), HD95 1.27 px (median 1.0, max
+  3.6)**; worst image JSI 0.926 / DSC 0.961; no empty prediction (validation split: JSI 0.9937, DSC 0.9968, BIoU 0.9605,
+  HD95 1.22 px). The ceiling did **not** drop with the larger working resolution (DSC 0.9967 as on the old export).
+  Resolution therefore costs the U-Net ≈ 0.007 JSI, ≈ 0.003 DSC, ≈ 0.04 BIoU and ≈ 1.3 px HD95 at most — against a
+  measured gap to perfection of ≈ 0.20 JSI (test JSI 0.797), ≈ 0.62 BIoU and ≈ 81 px HD95: **the U-Net's errors are
+  model errors, not resolution loss.** By lesion-size quintile the ceiling is highest for the largest lesions
+  (JSI 0.996, BIoU 0.955) — exactly where the U-Net is weakest (JSI 0.671), so its large-lesion failures are not a
+  resolution artefact. Related check already done (2026-10-03, CPU): the Phase 1 `best.pt` scored on the 100 validation images at the
+  dataset resolution gives JSI 0.8113 / DSC 0.8824, against 0.8112 / 0.8824 at 256 × 256 — the 256-px selection
+  metric does not inflate the U-Net's overlap scores (only the pooled JSI drops, 0.774 → 0.743).
 * **Native vs. resolution-matched compute.** The fused U-Net needs **6.40 GFLOPs** at its native 256 × 256 and **40.0
   GFLOPs** at 640 × 640 (cost grows with the pixel count, (640/256)² = 6.25×) — more than four times YOLO26n-seg at
   640 px (≈ 9.0–9.1 GFLOPs) for a comparable parameter count (2.69 M fused): the U-Net convolves at full input
@@ -573,8 +699,9 @@ of magnitude more than the U-Net.
   epoch loop: (1) official `train_epoch`; (2) official `val_epoch` (dumps the COCO predictions and computes COCO AP),
   then the study's pixel metrics on those predictions with the shared metric code; (3) selection on the validation
   per-image mean JSI (strict improvement, ties earliest), `best.pt` (weights + metrics) written atomically on
-  improvement; (4) **then** the checkpoint, and the epoch appended to `results.csv`. The official recipe validates
-  every second epoch, skips the first validation and selects nothing; the wrapper validates every epoch.
+  improvement; (4) **then** the checkpoint, and the epoch appended to `results.csv`. Meta's recipe validates
+  every 10th epoch (our base recipe file: every 2nd), skips the first validation and selects nothing (last checkpoint);
+  the wrapper validates every epoch.
 * **RNG-complete checkpointing.** The official checkpoint holds the model, optimiser and epoch but **no RNG state**, and
   is written *before* validation. `ProtocolTrainer` checkpoints *after* validation and adds the torch CPU and CUDA,
   NumPy and Python RNG states, the selection state (best value, best epoch, epochs without improvement) and the
@@ -647,8 +774,10 @@ of magnitude more than the U-Net.
 * **FP16 = `torch.autocast(float16)` with FP32 weights** (SAM 3's official mixed-precision path), whereas YOLO26 and the
   U-Net convert the weights (`.half()`); SAM 3's `vram_weights_mb` is therefore the FP32 footprint in both rows. In the
   preliminary check FP16 changed the mean validation JSI by +0.0006.
-* **Preliminary latency** (smoke test, V100S): ≈ 590 ms per image in FP32 (1.7 FPS), ≈ 196 ms with FP16 autocast;
-  3.3 GB of VRAM for the weights, forward peak 4.1 GB **[replace with the final Phase 5 values]**.
+* **Phase 5 latency** (V100S, batch 1, Optimized): forward 597 ms in FP32 and 196 ms with FP16 autocast (3.0×),
+  587 / 184 ms with cached text features, end-to-end (`Sam3Processor`) 603 / 203 ms; allocator peak 4,106 MiB (FP32),
+  process footprint 5,460 MiB. The Baseline FP32 benchmark ran on a busy GPU and is re-measured on an idle GPU before
+  publication (the Optimized FP32 and both FP16 runs were idle).
 * **Reduced budget** (30 epochs; HPO 10 × 10) — disclosed in `final_results.json` → `protocol_notes`.
 
 ---
@@ -767,7 +896,8 @@ benchmark.
 ## 9. Cross-architecture aggregation (root notebook)
 
 `04_cross_architecture_results.ipynb` (driver) and `results_aggregator.py` (logic, also runnable headless) read only the
-Phase 5 summaries and per-image files of the three pipelines and write `analysis_outputs/`:
+Phase 5 summaries and per-image files of the three pipelines and write `analysis_outputs/exports/repo_notebook_04/`
+(the paper workspace's `04_master_cross_model_comparison.ipynb` builds the final manuscript tables):
 
 * **Tables (LaTeX `booktabs` + CSV):** 1 accuracy with 95 % CI (best per column in bold); 2 efficiency with the
   real-time criterion; 3 HPO effect; 4 FP16 vs. FP32; 5 training cost per phase; 6 CV vs. test; 7 pairwise paired tests
@@ -812,8 +942,9 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 ## 11. Threats to validity and limitations
 
 1. **Native input resolution differs** (256 / 640 / 1008 px). Evaluation is at the same dataset resolution against the
-   same masks, but part of the accuracy *and* cost differences is resolution. Report the U-Net's 640-px GFLOPs and its
-   resolution ceiling.
+   same masks, but part of the cost differences is resolution (report the U-Net's 640-px GFLOPs). For accuracy the
+   effect is bounded and small: the U-Net's 256-px oracle ceiling on the test set is JSI 0.993 / DSC 0.997 / BIoU 0.958
+   (§ 6.2).
 2. **Unequal training budgets for SAM 3** (30 epochs, HPO 10 × 10 vs. 120 epochs, HPO 30 × 30), justified by compute
    (≈ 1.8 h per epoch) and strong pretrained weights; bias direction: SAM 3 is, if anything, under-tuned.
 3. **Different selection criteria** (YOLO26: box + mask mAP50-95; U-Net and SAM 3: per-image JSI, the U-Net at
@@ -821,15 +952,16 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 4. **Small validation split** (100 images) — checkpoint selection and HPO fitness remain noisy, and validation-based
    figures are optimistically biased (§ 4); mitigated by CV and by the paired test-set HPO analysis.
 5. **Different HPO algorithms and search spaces** (genetic algorithm vs. TPE; YOLO26 and U-Net 30 × 30, SAM 3 10 × 10) —
-   each tunes its own recipe; the HPO effect is reported per arm rather than compared. In YOLO26 and the U-Net the
-   Baseline values lie outside the search bounds (not candidates of the search); in SAM 3 the Baseline is the first trial.
+   each tunes its own recipe; the HPO effect is reported per arm rather than compared. In YOLO26 the Baseline values
+   lie outside the search bounds (not candidates of the search), and the optimiser and cosine schedule cannot be
+   searched; in SAM 3 and the U-Net (re-run) the Baseline is the first trial (§ 5.4).
 6. **Hardware dependence of latency** — absolute numbers are for the reported GPU (V100S) and software stack; ratios
    between models are more portable than absolute values. No CPU or embedded-GPU (e.g. Jetson) measurement is part of
    the protocol; claims about such devices must be framed as extrapolations from measured VRAM and latency.
 7. **FP16 paths differ** (`.half()` for the CNNs, autocast for SAM 3) — and so does training precision: SAM 3 trains in
    FP16 AMP with its text encoder frozen (§ 14.5), the CNNs in FP32. No matched FP32 / unfrozen SAM 3 run exists, so
-   the effect of these choices on SAM 3's accuracy is not measured (bias direction unknown; AMP with FP32 master
-   weights is the official recipe setting).
+   the effect of these choices on SAM 3's accuracy is not measured (bias direction unknown; Meta's recipe uses AMP with
+   **BF16**, which the V100 lacks — FP16 with FP32 master weights and loss scaling is the closest available setting).
 8. **Model classes differ** — YOLO26 and SAM 3 are instance/concept models evaluated as semantic segmenters (their
    top-1 instance, which relies on the one-lesion-per-image property of ISIC 2018 Task 1 — the rule cannot express
    "no lesion"); the U-Net's dense mask is scored as predicted (no connected-component filtering); the U-Net is a
@@ -920,17 +1052,20 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 
 1. **Resumed training runs** — which runs were resumed (`run_state.json`, flagged in the report); YOLO26 resumes are not
    bit-identical, SAM 3 resumes are statistically equivalent.
-2. **Baseline outside the search bounds** — YOLO26 (lr0, weight decay) and U-Net (weight decay 0 → 10⁻⁶); SAM 3's
-   Baseline is the first trial. Origin of YOLO26's refined bounds; **state that the exploratory search used train/val
+2. **Baseline outside the search bounds** — YOLO26 (lr0, weight decay); in the archived U-Net run weight decay
+   0 → 10⁻⁶. SAM 3's Baseline and the re-run U-Net's Baseline are the first trial. Origin of YOLO26's refined bounds; **state that the exploratory search used train/val
    only**.
 3. **Best-epoch alignment** — reported validation metrics are those of the selected checkpoint (§ 6.1).
 4. **Optimistic bias of validation-based figures** — main claims rest on the Phase 5 test figures.
 5. **HPO bookkeeping** — completed, failed and accepted-failure trials per model (`hpo_state.json`).
 6. **Search-algorithm asymmetry** — genetic algorithm (YOLO26) vs. TPE (U-Net, SAM 3); SAM 3's 10 × 10 budget with 5
    start-up trials.
-7. **Effective batch** — YOLO26x micro-batch 8 (`batch_effective`), effective batch 64 everywhere.
+7. **Effective batch** — YOLO26x trains with micro-batch 8: Ultralytics fell back from 16 to 8 in Phase 1 and in all
+   five CV folds (logged as `batch_reduced` in each `run_state.json`); HPO trials and Phase 4 use 8 directly
+   (`MICRO_BATCH`). Effective batch 64 everywhere (`nbs = 64`).
 8. **Contended efficiency runs** — none may be quoted; report GPU, driver, clock behaviour.
-9. **Different input resolutions and the U-Net resolution ceiling** (re-measured on the official test set).
+9. **Different input resolutions and the U-Net resolution ceiling** — measured on the official test set: JSI 0.9934,
+   DSC 0.9967, BIoU 0.9576, NSD 1.000, HD95 1.27 px (§ 6.2); the 256-px vs full-resolution validation check is done too.
 10. **Validation-metric resolution of the U-Net** (256 × 256 for selection).
 11. **Deliberate differences from the original Keras training** (binary mask augmentation, per-epoch reshuffle, BCE
     from logits).
@@ -995,8 +1130,9 @@ sizes are distinguished by direct labels (n, s, m, l, x).
 
 ### 14.5 SAM 3 training setup for throughput (2026-10-02, before Phase 1)
 
-* **Change** (`sam3_seg/common.py` `BASE_SETUP`, protocol-hashed): `amp = True` (float16 — the official recipe's
-  mixed-precision path; FP32 master weights and dynamic loss scaling; the V100 has no BF16), `freeze_text = True`
+* **Change** (`sam3_seg/common.py` `BASE_SETUP`, protocol-hashed): `amp = True` (float16 through the official
+  recipe's mixed-precision path — Meta's recipe uses bfloat16, which the V100 lacks; FP32 master weights and dynamic
+  loss scaling), `freeze_text = True`
   (353.7 M text-encoder parameters frozen → 486.8 M of 840.5 M trainable), `act_ckpt = False` in the ViT and text
   backbones (numerically neutral). Committed 13:46 UTC, Phase 1 started 13:52 UTC: **every SAM 3 phase uses it**.
 * **Why:** the official FP32 setup ran at 5.3 s per step (≈ 1.9 h per epoch, ≈ 25 days for Phases 1–4). Final setup:
@@ -1006,6 +1142,89 @@ sizes are distinguished by direct labels (n, s, m, l, x).
   the earlier probe and the accuracy effect is unmeasured (§ 11, item 7). Freezing the text encoder with a constant
   prompt removes only the ability to move one prompt embedding; the layers that consume it remain trainable.
   `val_loss` is logged as 0 by design (the official validation computes no loss) — treat it as missing.
+
+### 14.6 Operational incidents (none changed a reported number)
+
+| When (UTC) | What | Effect |
+|---|---|---|
+| 2026-10-05 21:29 | GPU unavailable to the SAM 3 container ("No CUDA GPUs are available") | Phase 2 fold 4 failed at its first step (no epoch run); restarted clean on 2026-10-06 15:42 and completed |
+| 2026-10-07 17:31 | GPU unavailable to YOLO26 (`phase2_pixels`) | pipeline stopped after all CV folds had trained; relaunched without `--force` (CV pixel re-score re-run) |
+| 2026-10-08 06:30 | GPU unavailable during YOLO26 Phase 3 (nano); 6 retries over 50 min, clean stop (exit 75) | relaunched 14:13 without `--force`; the interrupted trial re-ran from epoch 1 with the same (seeded) hyperparameters; no failed trial recorded |
+| 2026-10-09 06:33 | `unattended-upgrade` upgraded the NVIDIA driver 580.173.02 → 580.178 without a reboot | running containers unaffected; new GPU containers cannot start until the host is rebooted (`analysis_outputs/POST_YOLO26_RUNBOOK.md`) |
+
+Every training run completed its full budget; resumptions are recorded in each `run_state.json` and reported by the
+final reports. Recommendation for future runs: hold the NVIDIA packages (`apt-mark hold`) during experiments.
+
+### 14.7 U-Net re-run with the LR schedule and the loss balance in the search space (2026-10-13)
+
+* **Why.** In the first complete U-Net run (archived as `logs/pipeline_final_v1_old/`), the LR schedule was part of
+  the locked base setup, so the Optimized model kept the Baseline's constant learning rate. Under that constant LR the
+  validation JSI still oscillates at the end of training (per-epoch SD 0.014–0.020 in the late 20-epoch windows),
+  losses are still decreasing at epoch 120 and the CV folds select late epochs (86–117); the tuned model also shifted
+  towards over-segmentation (sensitivity 0.880 → 0.913, specificity 0.963 → 0.931), which the loss balance controls.
+  The HPO could act on neither. The planned cosine *sensitivity* run (an environment switch applied to every phase) was
+  dropped: it would have changed the Baseline too.
+* **What changed** (`sandbox_unet`, commit `7a8f8cd`). The Baseline is unchanged (constant LR 1e-3, no warm-up,
+  weight decay 0, BCE + Dice with equal weights). These settings became default hyperparameters instead of locked
+  base-setup keys, and Phase 3 searches 13 hyperparameters: the 9 of the first run plus `lr_schedule`
+  ∈ {constant, cosine, plateau}, `lr_final_factor` ∈ [0.005, 0.10] (log; cosine end point and plateau floor),
+  `warmup_epochs` ∈ {0, …, 5} (linear from 0.1 · lr0) and `dice_weight` ∈ [0.5, 2.0] (log). Trial 1 trains the exact
+  Baseline (weight decay 0, not the clipped 10⁻⁶). Every run is seeded from the protocol seed before the network is
+  built (previously a CV fold's or HPO trial's initial weights depended on the runs before it in the same process).
+* **Verification (CPU, subset of the data).** Constant, cosine and plateau runs repeat bit-identically and resume
+  bit-identically after a simulated crash; a search interrupted after 3 trials and extended to 5 equals a fresh 5-trial
+  search (proposals and every trial's training); trial 1 trains the exact Baseline; Phase 4 and the HPO validator read
+  the new hyperparameter file.
+* **Run.** All five phases into a new `logs/pipeline_final_v1/` (≈ 5.5 GPU-hours; the Phase 0 cache is reused). On
+  2026-10-13 no new GPU container could start (NVIDIA driver/library mismatch, § 14.6), so the run follows the host
+  reboot after YOLO26 (`analysis_outputs/POST_YOLO26_RUNBOOK.md`, step 3). The archived run stays on disk; the
+  analysis notebooks read it until the re-run is complete and then compare the two (notebook 01 § 8).
+* **Reporting.** The re-run is the study's U-Net. Its Phases 1–2 use the archived run's protocol: Phase 1 and CV
+  fold 1 should reproduce the archived values (same seed, same initialisation, same LR and loss arithmetic), while CV
+  folds 2–5 start from a different initialisation (the seeding fix above), so their numbers differ within the usual
+  run-to-run variation. The archived run may be cited as the result of the narrower search, but never
+  mixed with the re-run in one table.
+
+---
+
+## 15. Empirical findings (status 2026-10-13)
+
+Live numbers, tables and figures: `analysis_outputs/notebooks/` and `analysis_outputs/exports/` (regenerated by
+`analysis_outputs/refresh_all_analyses.sh`). Status: SAM 3 complete (Phases 1–5); YOLO26 complete through Phase 3
+except the xlarge HPO (in progress), Phases 4–5 pending. **U-Net: every number below comes from the archived run
+`pipeline_final_v1_old`** (Baseline identical to the re-run; HPO with the LR schedule locked to constant); the re-run
+with the extended search (§ 14.7) replaces them once it has finished.
+
+1. **Accuracy.** 5-fold CV JSI (mean ± SD over folds): SAM 3 0.846 ± 0.005; YOLO26 0.833–0.835 (all five sizes);
+   U-Net 0.811 ± 0.009. Test set (n = 1,000, Optimized): SAM 3 JSI 0.849 [0.840, 0.857], DSC 0.910, HD95 53.3 px
+   (median 24.0); U-Net JSI 0.795 [0.783, 0.806], DSC 0.871, HD95 89.6 px (median 39.5). Paired SAM 3 − U-Net:
+   ΔJSI +0.054 [0.046, 0.063] (Optimized; better on 690 of 1,000 images), +0.057 [0.048, 0.068] (Baseline); Holm
+   p < 0.001 for JSI, DSC, HD95 and BIoU.
+2. **HPO did not transfer to the test set** (U-Net, SAM 3; YOLO26 pending). U-Net: validation gain +0.019 JSI
+   (1.35 × trial SD) → test ΔJSI −0.002 [−0.010, +0.006], worse boundaries (BIoU −0.020, HD95 +7.0 px) and an
+   operating-point shift toward over-segmentation (sensitivity 0.880 → 0.913, specificity 0.963 → 0.931; better on
+   the largest lesions, worse on small ones). SAM 3: validation gain +0.006 (0.56 × trial SD) → test ΔJSI −0.006
+   [−0.011, −0.0004] with a non-significant Wilcoxon test (534 images better, 466 worse): a tail effect concentrated
+   in the largest lesions (largest quintile 0.834 → 0.793). Mechanisms: (i) selection on 100 validation images (SE
+   ≈ 0.02 JSI) — winner's curse; (ii) SAM 3's 10-epoch trials favour aggressive learning rates (winner at 97 % of
+   the `lr_scale` and backbone-decay ranges), which overfit over the 30-epoch Phase 4 (peak at epoch 4, then −0.022
+   JSI; training loss 18.6 vs 31.0 in Phase 1); (iii) several YOLO26 winners sit within 5 % of the refined bounds.
+   The a-priori rule (compare the Optimized variants) is kept; both variants are reported.
+3. **Training dynamics.** SAM 3 converges fast (best epoch 7 of 30, then a plateau without decline). YOLO26's late
+   decline on the official validation split (mask mAP 0.024–0.068 below its peak) is absent on the CV folds
+   (0.008–0.015, best epochs 73–120): a training-to-validation distribution shift, not generic overfitting;
+   `best.pt` captures the peak. U-Net: under the constant LR the validation JSI oscillates to the end (per-epoch SD
+   0.014–0.020 in the late windows) and the CV folds select late epochs (86–117) — the motivation for searching the
+   LR schedule in the re-run (§ 14.7).
+4. **Scale invariance (YOLO26).** CV JSI 0.833–0.835 and CV mask mAP50-95 0.725–0.738 from nano to xlarge, while
+   the Phase 1 training time grows from 1.7 h to 10.5 h: model scale does not buy accuracy on this task.
+5. **Failure modes.** Accuracy falls for the largest (frame-filling) lesions in every arm; the U-Net is most affected
+   (largest quintile JSI 0.671 Baseline, 51 of 200 images below 0.5). This is **not** a resolution effect — the
+   256-px oracle ceiling is highest in that quintile (JSI 0.996) — but a failure of the model itself on frame-filling
+   lesions (plausibly the limited context of a 4-level, 16-filter network; not tested here). The U-Net's 256-px
+   resolution ceiling on the whole test set is JSI 0.993 / DSC 0.997 / BIoU 0.958 / HD95 1.3 px.
+6. **Efficiency (status).** All U-Net and the SAM 3 Baseline FP32 benchmarks ran on a busy GPU and are re-measured
+   on an idle GPU after YOLO26 finishes; SAM 3's FP16 autocast is 3.0× faster than FP32 at batch 1.
 
 ---
 
@@ -1025,9 +1244,15 @@ The per-arm notes were written at different stages of the protocol. When writing
 | 8 | YOLO26 § 3.3 | epochs trained "computed over unique epochs" | `epochs_trained` = last epoch number; gaps in `results.csv` reported |
 | 9 | YOLO26 § 7.2, § 7.3; U-Net § 6 | end-to-end = `predict()` on the first test image (YOLO26 without `retina_masks`); VRAM excludes the CUDA context | end-to-end ends at the scored full-resolution mask on the host for every arm; first image **by ISIC ID**; plus `end_to_end_dataset` (100 images) and process-level VRAM incl. CUDA context — § 8 |
 | 10 | all three | metrics: DSC, JSI, JSI$_{0.65}$, sensitivity, specificity, accuracy | **+ Boundary IoU, NSD, HD95**; cross-architecture paired tests with Holm and Friedman — § 7 |
-| 11 | U-Net § 7.1 | resolution ceiling DSC 0.9967 (994 images, 640 × 640) | still valid for the old export only — **re-measure** on the official test set |
+| 11 | U-Net § 7.1 | resolution ceiling DSC 0.9967 (994 images, 640 × 640) | re-measured on the official test set (1,000 images, dataset resolution): DSC 0.9967, JSI 0.9934, BIoU 0.9576, HD95 1.27 px — § 6.2; the 256-px selection metric equals the full-resolution JSI on the validation split (0.8112 vs 0.8113) |
 | 12 | SAM 3 § 1.4, § 5 | validation-JSI reproduction value 0.6277150682843381; FP16 Δ JSI +0.0006 | preliminary checks on the earlier data — keep as verification evidence, not as results |
 | 13 | YOLO26 § 1.1, § 1.3 | [N_train/N_val/N_test]; training with DDP on two V100S | 2,594 / 100 / 1,000; GPU count of the final run to be stated (the launcher `wait_gpu.sh` now trains on one GPU by default) |
+| 14 | SAM 3 (header, § 3) | all parameters trainable, text encoder included; one FP32 epoch ≈ 106 min | text encoder frozen (486.8 M of 840.5 M trainable), FP16 AMP with FP32 master weights, backbone activation checkpointing off; ≈ 33.5 min per epoch — § 5.3, § 14.5 |
+| 15 | SAM 3 (header, § 1.3) | test mask = top-1 instance with score ≥ 0.5 | top-1 with score ≥ `PIXEL_CONF` = 0.001 (Phase 5 and the Phase 2 pixel re-score); 0.5 only in the training-time selection rule — § 14.4 |
+| 16 | YOLO26 § 5 | "all models were trained in FP32" | YOLO26 and the U-Net train in FP32; SAM 3 in FP16 AMP — § 7, § 14.5 |
+| 17 | U-Net (header) | 120 epochs, patience 25 | patience = epochs (120 / 120; HPO 30 / 30) — § 4; LR schedule, warm-up and Dice weight searched in Phase 3 of the re-run — § 14.7 |
+| 18 | U-Net § 5 (all notes), earlier versions of this document | the constant LR is "the original Keras recipe" | the constant LR is the out-of-the-box recipe of the pre-refactor Keras pipeline script; the Baseline of this study by definition (§ 5.4) |
+| 19 | earlier versions of this document | SAM 3 "official recipe" defaults: warm-up 2 steps, FP16 "official path", batch 2, flips 0.5 | these are our base recipe; Meta's recipe uses warm-up 20, BF16, batch 1, no flips, 20 epochs, last checkpoint, detection-only (§ 5.4) |
 
 ---
 

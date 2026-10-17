@@ -69,7 +69,7 @@ from common import (
     read_json,
     utc_now_iso,
 )
-from segmentation_metrics import LOWER_IS_BETTER
+from segmentation_metrics import LOWER_IS_BETTER, PIXEL_CONF
 from train_cv_sam3 import VAL_KEYS
 from training import RUN_STATE_FILE
 
@@ -95,11 +95,14 @@ PROTOCOL_NOTES: list[str] = [
     f"HPO {HPO_ITERATIONS} trials x {HPO_EPOCHS} epochs, patience {HPO_PATIENCE} (YOLO26, U-Net: 30 x 30), "
     "Optuna TPE with 5 start-up trials.",
     "Determinism: seeds, cuDNN deterministic, deterministic grid_sample, warn-only deterministic "
-    "algorithms; the ViT memory-efficient attention backward stays nondeterministic (strict mode "
-    "costs +33 % time) — repeated runs differ by <= ~1e-4 (weights) / 5th digit (val JSI).",
+    "algorithms; the ViT memory-efficient attention backward stays nondeterministic, so repeated or "
+    "resumed runs are statistically equivalent, not bit-identical. The quantified bound (<= ~7e-5 in the "
+    "weights after 3 epochs, 5th digit of val JSI) and the strict-mode cost (+33 % time) were measured "
+    "with the earlier FP32 setup; they were not re-measured with FP16 AMP.",
     "FP16 = torch.autocast(float16) with FP32 weights (SAM 3's official mixed-precision path).",
     f"Prompt '{BASE_SETUP['prompt']}', input {BASE_SETUP['resolution']} px, predicted mask = top-1 "
-    f"instance with score >= {BASE_SETUP['score_threshold']} (test; union of those instances for model selection).",
+    f"instance with score >= {PIXEL_CONF} (Phase 5 test and Phase 2 CV pixel re-score, as YOLO26); "
+    f"checkpoint selection uses the union of the instances with score >= {BASE_SETUP['score_threshold']}.",
 ]
 PIXEL_KEYS: tuple[str, ...] = ("dsc", "jsi", "jsi_thr", "sensitivity", "specificity", "accuracy", "biou", "nsd", "hd95")
 

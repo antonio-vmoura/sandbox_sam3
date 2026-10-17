@@ -34,7 +34,7 @@ by ISIC ID):
 
 Usage::
 
-    python results_aggregator.py                         # auto-discovery, outputs in <root>/analysis_outputs
+    python results_aggregator.py                         # auto-discovery, outputs in <root>/analysis_outputs/exports/repo_notebook_04
     python results_aggregator.py --root ~/projects --pipeline-name pipeline_final_v1 --variant optimized
 
 Requires numpy, pandas, scipy and matplotlib (no GPU, no deep-learning stack).
@@ -943,7 +943,7 @@ def build(root: Path | None = None, pipeline_name: str = "pipeline_final_v1", va
     """Load the three pipelines and compute every table and statistic (no figures)."""
     warnings: list[str] = []
     root = discover_root(root)
-    out = Path(out) if out else root / "analysis_outputs"
+    out = Path(out) if out else root / "analysis_outputs" / "exports" / "repo_notebook_04"
     pipes = find_pipelines(root, pipeline_name, warnings)
     systems = system_frame(pipes)
     if systems.empty:
@@ -1107,7 +1107,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--variant", default="optimized", choices=("baseline", "optimized"))
     ap.add_argument("--precision", default="fp32", choices=("fp32", "fp16"))
     ap.add_argument("--realtime-fps", type=float, default=30.0)
-    ap.add_argument("--out", type=Path, default=None, help="Output folder (default: <root>/analysis_outputs).")
+    ap.add_argument("--out", type=Path, default=None, help="Output folder (default: <root>/analysis_outputs/exports/repo_notebook_04).")
     ap.add_argument("--n-boot", type=int, default=2000)
     args = ap.parse_args(argv)
     art = build(args.root, args.pipeline_name, args.variant, args.precision, args.realtime_fps, args.out, args.n_boot)

@@ -1,3 +1,29 @@
+> [!CAUTION]
+> **DEPRECATED — do not quote this file.** It is an early per-arm draft (written before the final protocol) and is
+> kept only for history. Several of its setup details are **no longer true**. Use instead:
+>
+> * **`analysis/methodology_notes.md`** in this repository — the authoritative protocol (identical in `sandbox_yolo26`,
+>   `sandbox_unet` and `sandbox_sam3`); its **Appendix A** maps every superseded statement of this draft to the final value;
+> * **`/home/antoniovinicius/projects/analysis_outputs/methodology/MASTER_METHODOLOGY_AND_FINDINGS.md`** — the
+>   paper-ready synthesis of methods and findings (with the per-model documents next to it).
+>
+> **Superseded points (Appendix A, rows 14–17):**
+> 1. **SAM 3 training setup** — not "all parameters trainable, FP32, ≈ 106 min per epoch": the text encoder is
+>    **frozen** (486.8 M of 840.5 M parameters trainable), training uses **FP16 mixed precision** (FP32 master weights),
+>    backbone activation checkpointing is off; ≈ 33.5 min per epoch.
+> 2. **SAM 3 test prediction rule** — not "top-1 instance with score ≥ 0.5": the reported mask (Phase 5 and the Phase 2
+>    pixel re-score) is the **top-1 instance with score ≥ 0.001** (`PIXEL_CONF`, as YOLO26); 0.5 survives only in the
+>    training-time checkpoint-selection rule.
+> 3. **Training precision** — not "all models were trained in FP32": YOLO26 and the U-Net train in FP32, **SAM 3 in
+>    FP16 AMP**.
+> 4. **U-Net budget** — not "120 epochs, patience 25": **patience = epochs** (120 / 120; HPO 30 / 30), no early
+>    stopping in any arm; an optional cosine-LR sensitivity run exists separately (`pipeline_unet_cosine_v1`).
+>
+> Also superseded in these drafts (Appendix A, rows 1–13): the Roboflow export (2,547 / 100 / 994 images at 640 × 640)
+> → the official release, **2,594 / 100 / 1,000** images, longer side ≤ 1,024 px; ground truth = the **official masks**
+> (not rasterised polygons); YOLO26 pixel rule = **top-1 at conf ≥ 0.001** (not the union at 0.25); new CV fold sizes
+> (539 × 4, 538); boundary metrics (Boundary IoU, NSD, HD95) added.
+
 # Methodology Notes for the Article — SAM 3 on ISIC 2018 Task 1 (aligned with YOLO26-seg and U-Net)
 
 > **Purpose.** Technical foundation for the *Materials and Methods* section of the thesis and article, for the

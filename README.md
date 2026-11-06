@@ -1,8 +1,8 @@
 # SAM 3 — Skin Lesion Segmentation (ISIC 2018 Task 1)
 
 This repository contains the SAM 3 arm of the study that compares segmentation architectures (YOLO26-seg,
-U-Net, SAM 3) on ISIC 2018 Task 1. SAM 3 is fine-tuned with **Meta's official trainer and recipe** (vendored in
-`sam3/`, unmodified by the pipeline) and run through the **same 5-phase protocol, metrics, evaluation
+U-Net, SAM 3) on ISIC 2018 Task 1. SAM 3 is fine-tuned with **Meta's official trainer and fine-tuning recipe** (vendored in
+`sam3/`, see [Vendored SAM 3 code](#vendored-sam-3-code)) and run through the **same 5-phase protocol, metrics, evaluation
 resolution, efficiency profiling and output schema as `sandbox_yolo26` and `sandbox_unet`**, so the three
 pipelines can be compared directly and analysed with the same notebooks.
 
@@ -15,32 +15,33 @@ orchestrated by **`run_pipeline_sam3.sh`**.
 
 | Aspect | How it is guaranteed |
 |---|---|
-| **Same data** | Phase 0 builds a COCO dataset **from the YOLO26 dataset itself**: same images (hard-linked), same split (2,594 / 100 / 1,000, the official split), each YOLO polygon rasterised with the shared convention and stored as RLE. Every image carries its ISIC ID. |
+| **Same data** | Phase 0 builds a COCO dataset **from the YOLO26 dataset itself**: same images (hard-linked), same split (2,594 / 100 / 1,000, the official split), one instance per image whose compressed RLE is the official ISIC mask (holes and fragments exact). Every image carries its ISIC ID. |
 | **Same CV folds** | YOLO26's K-Fold algorithm (NumPy `RandomState(0)`) over the same pool order → **identical folds** (verified against the U-Net manifest; Phase 2 re-derives and checks them). |
-| **Same metrics, ground truth and resolution** | `sam3_seg/segmentation_metrics.py` is a **byte-identical copy** of YOLO26's. The predicted mask (top-1 instance with score ≥ `PIXEL_CONF` = 0.001, the YOLO26 rule; ISIC has one lesion per image) is scored at the original dataset resolution against the ground truth of the same polygons. |
-| **Same selection criterion as the U-Net** | Every phase selects `best.pt` on the validation **per-image mean JSI** (no early stopping: patience = epochs), computed with that same code (YOLO26 selects on the Ultralytics fitness, box + mask mAP50-95). Phase 5 runs the **identical** validation pipeline on the test set (verified: it reproduces the trainer's validation JSI to the last digit). |
+| **Same metrics, ground truth and resolution** | `sam3_seg/segmentation_metrics.py` is a **byte-identical copy** of YOLO26's. The predicted mask (top-1 instance with score ≥ `PIXEL_CONF` = 0.001, the YOLO26 rule; ISIC has one lesion per image) is scored at the original dataset resolution against the official ISIC mask, the ground truth of the three pipelines. |
+| **Same selection criterion as the U-Net** | Every phase selects `best.pt` on the validation **per-image mean JSI** (no early stopping: patience = epochs), computed with that same code (YOLO26 selects on the Ultralytics fitness, box + mask mAP50-95). Selection keeps SAM 3's default rule (union of the instances with score ≥ 0.5); the CV re-score and Phase 5 apply the top-1 rule above. Phase 5 rebuilds each run's own validation pipeline from its `config.yaml` and applies it to the test set. |
 | **Same profiling** | `benchmark_efficiency.py` is derived from YOLO26's: `torch.cuda.Event` timing, statistics, steady-state VRAM, contention checks and JSON schema; same `torch==2.5.1`. |
 
-## SAM 3-specific protocol decisions (disclosed in the report)
+## SAM 3-specific protocol decisions
 
 | Decision | Value | Why |
 |---|---|---|
-| Model | Official SAM 3 image model, **all 840.5 M parameters trainable** (text encoder not frozen) | full fine-tuning, as Meta's recipe |
+| Model | Official SAM 3 image model (`facebook/sam3`, 840.5 M parameters) with the **text encoder frozen** (`freeze_text`): 486.8 M parameters trainable | the prompt is constant, so the text encoder only ever produces one embedding; the layers that consume it stay trainable |
+| Recipe | Meta's fine-tuning recipe (`roboflow_v100_full_ft_100_images.yaml`) with its segmentation losses enabled (the weights of Meta's commented template), frozen in `sam3_seg/configs/sam3_base_recipe.yaml`. Differences from Meta's values: 2 warm-up steps (20), 30 cooldown steps (20), `o2m_weight` 1.0 (2.0), horizontal flip 0.5 (none), 30 epochs (20), validation every epoch with best-checkpoint selection (every 10 epochs, last checkpoint) | the task is segmentation; per-epoch selection as in the other arms. The HPO ranges contain Meta's warm-up and no-flip values |
 | Prompt | `"skin lesion"` (single COCO category) | clinically neutral (most ISIC lesions are benign) |
 | Input | 1008 × 1008 (native) | fixed by the architecture |
-| Precision / batch | FP32, batch 2, official activation checkpointing | memory probe below |
+| Precision / batch | **FP16 mixed precision** (`amp`: autocast float16, FP32 master weights, dynamic loss scaling; Meta's recipe uses bfloat16, which the V100 lacks), batch 2 (Meta: 1), activation checkpointing off in the ViT and text backbones (the detector keeps it) | throughput: the FP32 setup of the memory probe below needed ≈ 1.8 h per epoch |
 | **Budget, Phases 1, 2, 4** | **30 epochs, no early stopping** (patience 30; YOLO26 / U-Net: 120 epochs, no early stopping) | one FP32 epoch ≈ 1.8 h on a V100S; early stopping on the 100-image validation split proved noise-driven in YOLO26 and the U-Net |
 | **HPO** | **10 trials × 10 epochs, no early stopping** (patience 10; YOLO26 / U-Net: 30 × 30); Optuna TPE with 5 start-up trials | compute; a foundation model starts from strong weights |
 | Search space | `lr_scale` [0.01, 0.2] log, `weight_decay` [0.01, 0.2] log, `lrd_vision_backbone` [0.6, 1.0], `scheduler_warmup` [1, 1000] steps log, `hflip_p` [0, 0.5], `resize_min_size` [320, 1008] step 16 | learning dynamics + the recipe's own augmentations only (no loss weights, no `focal_gamma`) |
 | Determinism | seeds, cuDNN deterministic, **deterministic `grid_sample`** (`sam3_seg/determinism.py`), warn-only deterministic algorithms | the ViT memory-efficient attention backward stays nondeterministic: PyTorch's strict mode would cost +33 % time (verified bit-exact, `strict_determinism` in `common.py`). Repeated / resumed runs differ by ≤ ~1e-4 in the weights (5th digit of val JSI). |
 | FP16 (Phase 5) | `torch.autocast(float16)`, FP32 weights | SAM 3's official mixed-precision path |
 
-**Memory / throughput probe** (`sam3_seg/probe_memory.py`, V100S 32 GB, FP32, official recipe):
+**Memory / throughput probe** (`sam3_seg/probe_memory.py`, V100S 32 GB, FP32, all parameters trainable, measured before the base setup above was adopted):
 
 | Configuration | Result | Peak VRAM (alloc / device) | Step (median) | Epoch (2594 images) |
 |---|---|---|---|---|
 | batch 2, activation checkpointing **off** (ViT + text encoder) | OOM at 30.9 GiB | — | — | — |
-| **batch 2, official activation checkpointing (used)** | fits | 12.8 / 16.5 GiB | 5.0 s | ≈ 106 min |
+| batch 2, official activation checkpointing | fits | 12.8 / 16.5 GiB | 5.0 s | ≈ 106 min |
 | same, strict deterministic algorithms | fits | 12.9 / 16.4 GiB | 6.7 s | ≈ 141 min |
 
 A finished run deletes its 9.4 GB resume checkpoint (`checkpoint.pt`, weights + AdamW state); HPO trials also
@@ -53,7 +54,7 @@ delete their weights and keep only metrics.
 | Phase | What | Data | Script(s) |
 |---|---|---|---|
 | **0 — Dataset** | COCO dataset from the YOLO26 dataset; per-split and per-fold annotation files; SHA-256 provenance | train / val / test | `prepare_dataset.py` |
-| **1 — Baseline** | Base setup + **official recipe** hyperparameters | train / val | `train_baseline_sam3.py` |
+| **1 — Baseline** | Base setup + **default** hyperparameters of the base recipe | train / val | `train_baseline_sam3.py` |
 | **2 — Baseline CV** | 5-fold CV with the Phase 1 configuration; pixel metrics per fold (dataset resolution) | train ∪ val pool (**test excluded and verified**) | `train_cv_sam3.py`, `consolidate_cv_results_sam3.py`, `evaluate_cv_pixels.py` (each fold's `best.pt` re-scored with the Phase 5 top-1 rule) |
 | **3 — HPO** | Optuna TPE, **seeded per proposal**, fault-tolerant (`hpo_state.json`, exit 75 → retried) | train / val | `tune_sam3.py`, `check_hpo_validity.py` |
 | **4 — Optimised** | Same base setup + Phase 3 hyperparameters | train / val | `train_optimized_sam3.py` |
@@ -153,9 +154,10 @@ Environment overrides (defaults): `CV_K_FOLDS=5`, `CV_SEED=0`, `HPO_ITERATIONS=1
 Exit codes: `0` success · `75` the HPO gave up after repeated GPU failures (fix the driver and re-run to
 resume) · otherwise the exit code of the failing step (log in `pipeline_runs/<UTC>/`).
 
-**Compute budget (worst case, no early stop, V100S FP32):** Phase 1 ≈ 55 h, Phase 2 ≈ 5 × 47 h, Phase 3 ≈
-10 × 18 h, Phase 4 ≈ 55 h — about 3 weeks on one GPU. Phases 2 and 3 are independent: running them on two GPUs
-(two containers, `--phases 2` and `--phases 3`, same `PIPELINE_NAME`) saves about a week.
+**Compute budget.** With the FP32 setup of the memory probe (≈ 1.8 h per epoch), Phases 1–4 would take about
+3 weeks on one V100S; the FP16 base setup (frozen text encoder, no backbone activation checkpointing) is several
+times faster. Phases 2 and 3 are independent: running them on two GPUs (two containers, `--phases 2` and
+`--phases 3`, same `PIPELINE_NAME`) shortens the study further.
 
 ### Waiting for an idle GPU
 
@@ -235,12 +237,12 @@ under `protocol_notes`.
 ```
 sandbox_sam3/
 ├── run_pipeline_sam3.sh   wait_gpu_sam3.sh   Dockerfile
-├── sam3/                      # Meta's SAM 3 code (vendored; trainer, model, data, eval)
+├── sam3/                      # Meta's SAM 3 code (vendored, see below; SAM License in sam3/LICENSE)
 ├── sam3_seg/
 │   ├── common.py              # base setup, default HPs, budgets, protocols, paths, locks
 │   ├── prepare_dataset.py     # Phase 0
 │   ├── data.py                # verified access to the Phase 0 dataset
-│   ├── configs/sam3_base_recipe.yaml   # frozen official recipe
+│   ├── configs/sam3_base_recipe.yaml   # frozen base recipe (Meta's fine-tuning recipe, adapted)
 │   ├── protocol_trainer.py    # official trainer + val-JSI selection, early stopping, RNG-complete checkpoints
 │   ├── run_training.py  training.py   # one run per process; resumable run lifecycle
 │   ├── determinism.py         # deterministic grid_sample
@@ -250,21 +252,38 @@ sandbox_sam3/
 │   ├── train_baseline_sam3.py  train_cv_sam3.py  consolidate_cv_results_sam3.py  evaluate_cv_pixels.py
 │   ├── tune_sam3.py  check_hpo_validity.py  train_optimized_sam3.py  collect_phase_metrics_sam3.py
 │   ├── evaluate_test_set.py  benchmark_efficiency.py  build_final_report.py
-│   └── legacy/                # previous pipeline scripts (not used)
+│   └── export_phase1_val_masks.py    # Phase 1 validation masks for the side-by-side figure of notebook 04
 ├── analysis/                  # every Jupyter notebook + the cross-architecture tooling
 │   ├── 01_internal_analysis.ipynb          # run first: every phase, from the first epoch of Phase 1
 │   ├── 02_segmentation_visualizer.ipynb    # Phase 5
 │   ├── 03_metrics_and_efficiency.ipynb     # Phase 5
 │   ├── 04_cross_architecture_results.ipynb # Phase 5, all three architectures
-│   ├── results_aggregator.py  methodology_notes.md
-│   └── legacy/                # earlier analysis notebooks (kept as a backup)
-├── utils/examples/            # Meta's SAM 3 example notebooks
-├── utils/legacy/              # earlier conversion / metric scripts (kept as a backup)
-├── sam3/train/configs/custom/legacy/   # earlier training / HPO / CV configs
+│   └── results_aggregator.py
+├── pyproject.toml             # Meta's package definition of sam3/ (installed by the Dockerfile)
 └── datasets/  logs/  sam3_cache/   # not versioned
 ```
 
-Meta's original README is kept as `README_OFC.md`; `README_TRAIN.md` documents the official training code.
+## Vendored SAM 3 code
+
+`sam3/` and `pyproject.toml` are Meta's SAM 3 code from
+[`facebookresearch/sam3`](https://github.com/facebookresearch/sam3) at commit
+[`99d02f2`](https://github.com/facebookresearch/sam3/tree/99d02f28c8d34610ab35559b72642b01f10fdb1e)
+(2026-01-27), distributed under the SAM License ([`sam3/LICENSE`](sam3/LICENSE)). Meta's own documentation
+(the [README](https://github.com/facebookresearch/sam3/blob/99d02f28c8d34610ab35559b72642b01f10fdb1e/README.md),
+the [training guide](https://github.com/facebookresearch/sam3/blob/99d02f28c8d34610ab35559b72642b01f10fdb1e/README_TRAIN.md)
+and the [example notebooks](https://github.com/facebookresearch/sam3/tree/99d02f28c8d34610ab35559b72642b01f10fdb1e/examples))
+is linked at that commit instead of being copied here.
+
+The pipeline wraps this code without editing it at run time (`sam3_seg/protocol_trainer.py` subclasses the official
+trainer). The vendored copy differs from that commit in three files:
+
+| File | Change | Effect on this study |
+|---|---|---|
+| `sam3/train/trainer.py` | the `DistributedDataParallel` wrapper is skipped when the process group has a single process | every run uses one GPU |
+| `sam3/train/trainer.py` | the training step also accepts a single batch dictionary and does not assert that the number of chunks equals `grad_accum_chunks` | none with `grad_accum_chunks: 1` (the base setup): each batch is processed as upstream |
+| `sam3/model/sam3_video_inference.py` | video-inference autocast in float16 instead of bfloat16 (the V100 has no bfloat16) | none: the image pipeline does not use video inference |
+
+`sam3/train/train.py` also carries a commented-out alternative of the single-node runner (no effect).
 
 ## Analysis notebooks
 
@@ -295,9 +314,9 @@ screen -r sam3_ft        # reattach
 Copy the results:
 
 ```bash
-rsync -avz --progress -e "ssh -p 13508" \
-    antoniovinicius@164.41.75.221:/home/antoniovinicius/projects/sandbox_sam3/logs/pipeline_final_v1 \
-    /home/avmoura_linux/Documents/unb/SANDBOX_SAM3/logs/
+rsync -avz --progress \
+    <user>@<server>:<path-to>/sandbox_sam3/logs/pipeline_final_v1 \
+    ./logs/
 ```
 
 Hardware monitoring: `nvidia-smi`, `nvtop`.

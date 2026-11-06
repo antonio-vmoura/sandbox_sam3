@@ -1,13 +1,15 @@
+# Build context of the Docker image (identical in sandbox_yolo26, sandbox_unet and sandbox_sam3).
+# Data, outputs and caches are bind-mounted at run time, never copied into the image.
+.git/
 __pycache__
 *.pyc
 *.pyo
 *.pyd
 venv/
-.git/
-logs/
-data/
-ph2_dataset/
-outputs/
+.venv/
 datasets/
-sam3_cache/
+logs/
 cache/
+sam3_cache/
+data/
+outputs/

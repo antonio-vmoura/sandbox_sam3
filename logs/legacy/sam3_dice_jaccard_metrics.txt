@@ -1,2 +1,0 @@
-Jaccard (IoU) Médio: 0.8341
-Dice Médio: 0.9030

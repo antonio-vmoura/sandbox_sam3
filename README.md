@@ -249,18 +249,14 @@ sandbox_sam3/
 │   ├── probe_memory.py        # memory / throughput probe
 │   ├── train_baseline_sam3.py  train_cv_sam3.py  consolidate_cv_results_sam3.py  evaluate_cv_pixels.py
 │   ├── tune_sam3.py  check_hpo_validity.py  train_optimized_sam3.py  collect_phase_metrics_sam3.py
-│   ├── evaluate_test_set.py  benchmark_efficiency.py  build_final_report.py
-│   └── legacy/                # previous pipeline scripts (not used)
+│   └── evaluate_test_set.py  benchmark_efficiency.py  build_final_report.py
 ├── analysis/                  # every Jupyter notebook + the cross-architecture tooling
 │   ├── 01_internal_analysis.ipynb          # run first: every phase, from the first epoch of Phase 1
 │   ├── 02_segmentation_visualizer.ipynb    # Phase 5
 │   ├── 03_metrics_and_efficiency.ipynb     # Phase 5
 │   ├── 04_cross_architecture_results.ipynb # Phase 5, all three architectures
-│   ├── results_aggregator.py
-│   └── legacy/                # earlier analysis notebooks (kept as a backup)
+│   └── results_aggregator.py
 ├── utils/examples/            # Meta's SAM 3 example notebooks
-├── utils/legacy/              # earlier conversion / metric scripts (kept as a backup)
-├── sam3/train/configs/custom/legacy/   # earlier training / HPO / CV configs
 └── datasets/  logs/  sam3_cache/   # not versioned
 ```
 

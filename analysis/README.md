@@ -10,7 +10,6 @@ Notebooks are numbered in run order (01 needs only Phase 1; 02–04 need Phase 5
 | `03_metrics_and_efficiency.ipynb` | Phase 5: accuracy, HPO gain, efficiency, LaTeX tables of this architecture |
 | `04_cross_architecture_results.ipynb` | Section 0: Phase 1 masks side by side (U-Net, YOLO26-nano, SAM 3) on the validation split, after `export_phase1_val_masks.py` in each repository. Then Phase 5, all three architectures — master notebook: unified LaTeX tables, paired cross-architecture statistics and figures (YOLO26-seg vs. U-Net vs. SAM 3) |
 | `results_aggregator.py` | The logic behind the notebook; also runnable headless: `python results_aggregator.py` |
-| `methodology_notes.md` | Unified methodology (5-phase design, fairness controls, early-stopping justification, model-specific quirks, Phase 0, metrics, efficiency protocol, limitations, Methods wording) |
 
 **Where to run.** Put `04_cross_architecture_results.ipynb` and `results_aggregator.py` in the folder that contains the three repositories
 (e.g. `~/projects/` with `sandbox_yolo26/`, `sandbox_unet/`, `sandbox_sam3/` — any letter case), or run them from here:

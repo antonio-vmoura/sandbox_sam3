@@ -256,7 +256,7 @@ sandbox_sam3/
 │   ├── 02_segmentation_visualizer.ipynb    # Phase 5
 │   ├── 03_metrics_and_efficiency.ipynb     # Phase 5
 │   ├── 04_cross_architecture_results.ipynb # Phase 5, all three architectures
-│   ├── results_aggregator.py  methodology_notes.md
+│   ├── results_aggregator.py
 │   └── legacy/                # earlier analysis notebooks (kept as a backup)
 ├── utils/examples/            # Meta's SAM 3 example notebooks
 ├── utils/legacy/              # earlier conversion / metric scripts (kept as a backup)

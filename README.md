@@ -2,7 +2,7 @@
 
 This repository contains the SAM 3 arm of the study that compares segmentation architectures (YOLO26-seg,
 U-Net, SAM 3) on ISIC 2018 Task 1. SAM 3 is fine-tuned with **Meta's official trainer and recipe** (vendored in
-`sam3/`, unmodified by the pipeline) and run through the **same 5-phase protocol, metrics, evaluation
+`sam3/`, see [Vendored SAM 3 code](#vendored-sam-3-code)) and run through the **same 5-phase protocol, metrics, evaluation
 resolution, efficiency profiling and output schema as `sandbox_yolo26` and `sandbox_unet`**, so the three
 pipelines can be compared directly and analysed with the same notebooks.
 
@@ -235,7 +235,7 @@ under `protocol_notes`.
 ```
 sandbox_sam3/
 ├── run_pipeline_sam3.sh   wait_gpu_sam3.sh   Dockerfile
-├── sam3/                      # Meta's SAM 3 code (vendored; trainer, model, data, eval)
+├── sam3/                      # Meta's SAM 3 code (vendored, see below; SAM License in sam3/LICENSE)
 ├── sam3_seg/
 │   ├── common.py              # base setup, default HPs, budgets, protocols, paths, locks
 │   ├── prepare_dataset.py     # Phase 0
@@ -256,11 +256,31 @@ sandbox_sam3/
 │   ├── 03_metrics_and_efficiency.ipynb     # Phase 5
 │   ├── 04_cross_architecture_results.ipynb # Phase 5, all three architectures
 │   └── results_aggregator.py
-├── utils/examples/            # Meta's SAM 3 example notebooks
+├── pyproject.toml             # Meta's package definition of sam3/ (installed by the Dockerfile)
 └── datasets/  logs/  sam3_cache/   # not versioned
 ```
 
-Meta's original README is kept as `README_OFC.md`; `README_TRAIN.md` documents the official training code.
+## Vendored SAM 3 code
+
+`sam3/` and `pyproject.toml` are Meta's SAM 3 code from
+[`facebookresearch/sam3`](https://github.com/facebookresearch/sam3) at commit
+[`99d02f2`](https://github.com/facebookresearch/sam3/tree/99d02f28c8d34610ab35559b72642b01f10fdb1e)
+(2026-01-27), distributed under the SAM License ([`sam3/LICENSE`](sam3/LICENSE)). Meta's own documentation
+(the [README](https://github.com/facebookresearch/sam3/blob/99d02f28c8d34610ab35559b72642b01f10fdb1e/README.md),
+the [training guide](https://github.com/facebookresearch/sam3/blob/99d02f28c8d34610ab35559b72642b01f10fdb1e/README_TRAIN.md)
+and the [example notebooks](https://github.com/facebookresearch/sam3/tree/99d02f28c8d34610ab35559b72642b01f10fdb1e/examples))
+is linked at that commit instead of being copied here.
+
+The pipeline wraps this code without editing it at run time (`sam3_seg/protocol_trainer.py` subclasses the official
+trainer). The vendored copy differs from that commit in three files:
+
+| File | Change | Effect on this study |
+|---|---|---|
+| `sam3/train/trainer.py` | the `DistributedDataParallel` wrapper is skipped when the process group has a single process | every run uses one GPU |
+| `sam3/train/trainer.py` | the training step also accepts a single batch dictionary and does not assert that the number of chunks equals `grad_accum_chunks` | none with `grad_accum_chunks: 1` (the base setup): each batch is processed as upstream |
+| `sam3/model/sam3_video_inference.py` | video-inference autocast in float16 instead of bfloat16 (the V100 has no bfloat16) | none: the image pipeline does not use video inference |
+
+`sam3/train/train.py` also carries a commented-out alternative of the single-node runner (no effect).
 
 ## Analysis notebooks
 

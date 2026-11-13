@@ -1,0 +1,13 @@
+{
+  "arch": "sam3",
+  "model": "sam3",
+  "label": "SAM 3",
+  "split": "val (official, n=100)",
+  "source": "Phase 1 best.pt (epoch 7)",
+  "weights": "logs/pipeline_final_v1/phase1_baseline/sam3_baseline/checkpoints/best.pt",
+  "weights_sha256": "f82765858f04d818a7c48ecbacaca4067fb7c63cd01c341c12f6b42ceeb45bc3",
+  "epoch": 7,
+  "rule": "top-1 instance, score >= 0.001",
+  "jsi_mean": 0.8626165518505896,
+  "dsc_mean": 0.9210375301815078
+}

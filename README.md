@@ -11,6 +11,12 @@ orchestrated by **`run_pipeline_sam3.sh`**.
 
 ---
 
+## Reproducibility package (pipeline_final_v1)
+
+The fold manifests, dataset split manifests and result files of the pipeline_final_v1 experiments of this arm are in [`reproducibility/pipeline_final_v1/`](reproducibility/pipeline_final_v1/). They cover all five phases, the per-image test scores, the efficiency benchmark and the summary tables. Its README describes how each file was produced, the columns of every CSV, what is not included, and how to regenerate the folds and re-run the evaluation. The cross-validation folds (`folds/folds.csv`) are identical in this repository, `sandbox_yolo26` and `sandbox_unet`.
+
+---
+
 ## What makes the comparison fair
 
 | Aspect | How it is guaranteed |

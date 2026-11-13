@@ -1,0 +1,7 @@
+# Phase 3 best of 10 trial(s): trial 5, fitness (val JSI) = 0.870249
+lr_scale: 0.18119025126885316
+weight_decay: 0.051518780081801545
+lrd_vision_backbone: 0.9890737439859537
+scheduler_warmup: 114
+hflip_p: 0.3488644122986354
+resize_min_size: 464

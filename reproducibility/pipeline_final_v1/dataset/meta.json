@@ -1,0 +1,87 @@
+{
+  "created_at": "2026-10-01T19:02:08+00:00",
+  "files_sha256": {
+    "annotations/test.json": "c738d0223e650a7a598695a03f3d640268e6fd506b7f6ca07bdaeaed756b1f00",
+    "annotations/train.json": "2c611233d30537669c01a2c02e9f48219483dccb9bee9e347e7cf362cfbb6993",
+    "annotations/val.json": "3f038ba8e126838bfe5caf392567121f14304ae817fc7479e3f3ab2f4d627930",
+    "folds/fold_0/train.json": "9782fe3c4859daed617f1db74da2c50b8883eed813825f084afc5ac205ba335f",
+    "folds/fold_0/val.json": "3186f404f2fa6da9e95d0e8aedcd6ca32493a0e6d2b12d67c1a0b02a88840701",
+    "folds/fold_1/train.json": "79e5ac301bf9e427037caef8994e884d7dc89a269bc548562cef3befe089d1c9",
+    "folds/fold_1/val.json": "7b75f9a9cc369e91bb1883053089bb00569a257f479ef26bad1e25a7a44cd2ce",
+    "folds/fold_2/train.json": "b081cde4bd8da0ad67a809ca1e8d38dd242e26afed45c24c15c68056f0cb1952",
+    "folds/fold_2/val.json": "5e42fa9904e127aaca9156da02602f03024385955a04fe927377b10e0720e36d",
+    "folds/fold_3/train.json": "e7882a91c3da0ae6753a00a2a9fdc781d7b6420f8e93c72e0efeb31b01e01cb8",
+    "folds/fold_3/val.json": "d9d3e4d903007e18acc5b03e41397eb4606884b9eaf78dbf41dead794b638d3f",
+    "folds/fold_4/train.json": "34e9b5c9956ca8ca54812f5730e405c7f58fbae87111fc9b41e29e5bea17846f",
+    "folds/fold_4/val.json": "110c4121cffaeb7423ab174210892e72ae855bd211cd674768f5543d68aeecd1"
+  },
+  "folds": [
+    {
+      "fold": 0,
+      "n_train": 2155,
+      "n_val": 539,
+      "val_sha256": "c47aa78fdac5a4241c63d90055887d4c10fdf8d66103b87a235d1c535e2b2050"
+    },
+    {
+      "fold": 1,
+      "n_train": 2155,
+      "n_val": 539,
+      "val_sha256": "1b874f80a5a06f5fd4d696dc718ac006b036a6d23b67e10160a30ffa2d0ab316"
+    },
+    {
+      "fold": 2,
+      "n_train": 2155,
+      "n_val": 539,
+      "val_sha256": "9640b3249c2ea9ad95c84734dc62127e9d493c69d046b21dc61ec70786fe7499"
+    },
+    {
+      "fold": 3,
+      "n_train": 2155,
+      "n_val": 539,
+      "val_sha256": "fd53efd5bed8773a811dece9352b227df37da8502ceed2a56dcfc621307b7067"
+    },
+    {
+      "fold": 4,
+      "n_train": 2156,
+      "n_val": 538,
+      "val_sha256": "54152225472b4cf49551cee6ba5b593abd792ef37115f7f774c87b7b63f7a1f6"
+    }
+  ],
+  "image_pool": {
+    "copy": 3694,
+    "link": 0
+  },
+  "params": {
+    "category": {
+      "id": 0,
+      "name": "skin lesion",
+      "supercategory": "lesion"
+    },
+    "ground_truth": "segmentation_metrics.ground_truth_mask",
+    "k_folds": 5,
+    "mask_encoding": "compressed RLE (pycocotools)",
+    "prep_version": 2,
+    "seed": 0
+  },
+  "source_data_yaml": "../sandbox_yolo26/datasets/isic2018_task1_official/data.yaml",
+  "source_root": "../sandbox_yolo26/datasets/isic2018_task1_official",
+  "sources": {
+    "test": "322fb1fda23974770359d7766765cd06422d3da34593c091dc86ef55fff05840",
+    "train": "efa9f99baf4a14d80e822c9785f7d85a0056e0b7678fcadeef8f62b1b7a40680",
+    "val": "9f667d5d5c5debff6c9cdbe4ad318ccc35d50ae38df0ddec17e175783f6fba4c"
+  },
+  "splits": {
+    "test": {
+      "n_images": 1000,
+      "n_instances": 1000
+    },
+    "train": {
+      "n_images": 2594,
+      "n_instances": 2594
+    },
+    "val": {
+      "n_images": 100,
+      "n_instances": 100
+    }
+  }
+}

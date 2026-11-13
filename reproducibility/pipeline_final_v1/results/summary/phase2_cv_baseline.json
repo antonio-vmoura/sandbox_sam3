@@ -1,0 +1,273 @@
+{
+  "missing": [],
+  "models": [
+    {
+      "model": "sam3",
+      "n_folds": 5,
+      "per_fold": [
+        {
+          "best_epoch": 19,
+          "best_epoch_source": "best.pt",
+          "epochs_trained": 30,
+          "f1_b": NaN,
+          "f1_m": NaN,
+          "fitness": 0.844794222276525,
+          "map5095_b": 0.7679876028617075,
+          "map5095_m": 0.7178949530304822,
+          "map50_b": NaN,
+          "map50_m": NaN,
+          "precision_b": NaN,
+          "precision_m": NaN,
+          "recall_b": NaN,
+          "recall_m": NaN,
+          "val_accuracy": 0.9652141009560895,
+          "val_biou": 0.45483774786187714,
+          "val_coco_ap_bbox": 0.7679876028617075,
+          "val_coco_ap_segm": 0.7178949530304822,
+          "val_dsc": 0.9080466331790814,
+          "val_hd95": 41.361063419379185,
+          "val_jsi": 0.844794222276525,
+          "val_jsi_thr": 0.8127864950321974,
+          "val_n_empty_pred": 0.0,
+          "val_nsd": 0.6595684451678715,
+          "val_pooled_dsc": 0.9220172876359313,
+          "val_pooled_jsi": 0.855317322866804,
+          "val_sensitivity": 0.9042757504039896,
+          "val_specificity": 0.978152425978445
+        },
+        {
+          "best_epoch": 11,
+          "best_epoch_source": "best.pt",
+          "epochs_trained": 30,
+          "f1_b": NaN,
+          "f1_m": NaN,
+          "fitness": 0.849990717244087,
+          "map5095_b": 0.7672116528345899,
+          "map5095_m": 0.7340295912033199,
+          "map50_b": NaN,
+          "map50_m": NaN,
+          "precision_b": NaN,
+          "precision_m": NaN,
+          "recall_b": NaN,
+          "recall_m": NaN,
+          "val_accuracy": 0.9672632601247791,
+          "val_biou": 0.4763861549629355,
+          "val_coco_ap_bbox": 0.7672116528345899,
+          "val_coco_ap_segm": 0.7340295912033199,
+          "val_dsc": 0.911578160117209,
+          "val_hd95": 38.36535810168023,
+          "val_jsi": 0.849990717244087,
+          "val_jsi_thr": 0.8119219640846224,
+          "val_n_empty_pred": 0.0,
+          "val_nsd": 0.6886435811674075,
+          "val_pooled_dsc": 0.9196658648805972,
+          "val_pooled_jsi": 0.8512790950356781,
+          "val_sensitivity": 0.9093696071517778,
+          "val_specificity": 0.9767949905064297
+        },
+        {
+          "best_epoch": 18,
+          "best_epoch_source": "best.pt",
+          "epochs_trained": 30,
+          "f1_b": NaN,
+          "f1_m": NaN,
+          "fitness": 0.8519722092352279,
+          "map5095_b": 0.7773105495090536,
+          "map5095_m": 0.7192383771363747,
+          "map50_b": NaN,
+          "map50_m": NaN,
+          "precision_b": NaN,
+          "precision_m": NaN,
+          "recall_b": NaN,
+          "recall_m": NaN,
+          "val_accuracy": 0.9674263120830081,
+          "val_biou": 0.47163162414111076,
+          "val_coco_ap_bbox": 0.7773105495090536,
+          "val_coco_ap_segm": 0.7192383771363747,
+          "val_dsc": 0.9136220079791587,
+          "val_hd95": 36.57827671786186,
+          "val_jsi": 0.8519722092352279,
+          "val_jsi_thr": 0.8239805187434781,
+          "val_n_empty_pred": 0.0,
+          "val_nsd": 0.682835420542247,
+          "val_pooled_dsc": 0.9211036735530223,
+          "val_pooled_jsi": 0.8537462321207466,
+          "val_sensitivity": 0.90046391094937,
+          "val_specificity": 0.9839750001448526
+        },
+        {
+          "best_epoch": 16,
+          "best_epoch_source": "best.pt",
+          "epochs_trained": 30,
+          "f1_b": NaN,
+          "f1_m": NaN,
+          "fitness": 0.8383528844791961,
+          "map5095_b": 0.7643676729292082,
+          "map5095_m": 0.7065513278981056,
+          "map50_b": NaN,
+          "map50_m": NaN,
+          "precision_b": NaN,
+          "precision_m": NaN,
+          "recall_b": NaN,
+          "recall_m": NaN,
+          "val_accuracy": 0.9618138031177534,
+          "val_biou": 0.4547235048239563,
+          "val_coco_ap_bbox": 0.7643676729292082,
+          "val_coco_ap_segm": 0.7065513278981056,
+          "val_dsc": 0.9037655417077217,
+          "val_hd95": 44.103095462768984,
+          "val_jsi": 0.8383528844791961,
+          "val_jsi_thr": 0.7954589004728321,
+          "val_n_empty_pred": 0.0,
+          "val_nsd": 0.6564746584526517,
+          "val_pooled_dsc": 0.9100434350872736,
+          "val_pooled_jsi": 0.8349355051227583,
+          "val_sensitivity": 0.8972193070602391,
+          "val_specificity": 0.977278005898156
+        },
+        {
+          "best_epoch": 10,
+          "best_epoch_source": "best.pt",
+          "epochs_trained": 30,
+          "f1_b": NaN,
+          "f1_m": NaN,
+          "fitness": 0.8426383122053754,
+          "map5095_b": 0.7657508608101398,
+          "map5095_m": 0.727366659268633,
+          "map50_b": NaN,
+          "map50_m": NaN,
+          "precision_b": NaN,
+          "precision_m": NaN,
+          "recall_b": NaN,
+          "recall_m": NaN,
+          "val_accuracy": 0.9647398323701721,
+          "val_biou": 0.473906483015951,
+          "val_coco_ap_bbox": 0.7657508608101398,
+          "val_coco_ap_segm": 0.727366659268633,
+          "val_dsc": 0.9042544306631929,
+          "val_hd95": 40.99265160950585,
+          "val_jsi": 0.8426383122053754,
+          "val_jsi_thr": 0.8126241909125052,
+          "val_n_empty_pred": 0.0,
+          "val_nsd": 0.6878675003669992,
+          "val_pooled_dsc": 0.9140070159919063,
+          "val_pooled_jsi": 0.841632523829541,
+          "val_sensitivity": 0.9095137257579479,
+          "val_specificity": 0.9796762872442355
+        }
+      ],
+      "source": "logs/pipeline_final_v1/phase2_cv_baseline/sam3/metrics_summary.json",
+      "summary": {
+        "best_epoch": {
+          "mean": 14.8,
+          "std": 4.08656334834051
+        },
+        "epochs_trained": {
+          "mean": 30,
+          "std": 0.0
+        },
+        "f1_b": {
+          "mean": NaN,
+          "std": NaN
+        },
+        "f1_m": {
+          "mean": NaN,
+          "std": NaN
+        },
+        "fitness": {
+          "mean": 0.8455496690880823,
+          "std": 0.005518431347673173
+        },
+        "map5095_b": {
+          "mean": 0.7685256677889398,
+          "std": 0.005103400117218795
+        },
+        "map5095_m": {
+          "mean": 0.7210161817073831,
+          "std": 0.010390043854994702
+        },
+        "map50_b": {
+          "mean": NaN,
+          "std": NaN
+        },
+        "map50_m": {
+          "mean": NaN,
+          "std": NaN
+        },
+        "precision_b": {
+          "mean": NaN,
+          "std": NaN
+        },
+        "precision_m": {
+          "mean": NaN,
+          "std": NaN
+        },
+        "recall_b": {
+          "mean": NaN,
+          "std": NaN
+        },
+        "recall_m": {
+          "mean": NaN,
+          "std": NaN
+        },
+        "val_accuracy": {
+          "mean": 0.9652914617303605,
+          "std": 0.0022830880404996028
+        },
+        "val_biou": {
+          "mean": 0.46629710296116617,
+          "std": 0.010646757070407287
+        },
+        "val_coco_ap_bbox": {
+          "mean": 0.7685256677889398,
+          "std": 0.005103400117218795
+        },
+        "val_coco_ap_segm": {
+          "mean": 0.7210161817073831,
+          "std": 0.010390043854994702
+        },
+        "val_dsc": {
+          "mean": 0.9082533547292727,
+          "std": 0.00436037159503495
+        },
+        "val_hd95": {
+          "mean": 40.28008906223922,
+          "std": 2.900915293806446
+        },
+        "val_jsi": {
+          "mean": 0.8455496690880823,
+          "std": 0.005518431347673173
+        },
+        "val_jsi_thr": {
+          "mean": 0.811354413849127,
+          "std": 0.010198911386448605
+        },
+        "val_n_empty_pred": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "val_nsd": {
+          "mean": 0.6750779211394354,
+          "std": 0.015767089881326146
+        },
+        "val_pooled_dsc": {
+          "mean": 0.9173674554297461,
+          "std": 0.005142878051404588
+        },
+        "val_pooled_jsi": {
+          "mean": 0.8473821357951056,
+          "std": 0.008755453444510322
+        },
+        "val_sensitivity": {
+          "mean": 0.9041684602646649,
+          "std": 0.005423322763699298
+        },
+        "val_specificity": {
+          "mean": 0.9791753419544238,
+          "std": 0.002898274449936931
+        }
+      }
+    }
+  ],
+  "protocol": "baseline"
+}

@@ -1,0 +1,68 @@
+{
+  "best_epoch": 7,
+  "best_pt": "logs/pipeline_final_v1/phase1_baseline/sam3_baseline/checkpoints/best.pt",
+  "data": {
+    "image_dir": "datasets/isic_2018_task1_sam3/images",
+    "train_json_sha256": "2c611233d30537669c01a2c02e9f48219483dccb9bee9e347e7cf362cfbb6993",
+    "val_json_sha256": "3f038ba8e126838bfe5caf392567121f14304ae817fc7479e3f3ab2f4d627930"
+  },
+  "epochs_trained": 30,
+  "events": [
+    {
+      "at": "2026-10-02T13:52:52+00:00",
+      "event": "start"
+    },
+    {
+      "at": "2026-10-03T06:45:26+00:00",
+      "elapsed_min": 1012.56,
+      "event": "complete"
+    }
+  ],
+  "metrics": {
+    "best_epoch": 7,
+    "epochs_trained": 30,
+    "val_accuracy": 0.963891367736618,
+    "val_biou": 0.43418262637968824,
+    "val_coco_ap_bbox": 0.7090014571639455,
+    "val_coco_ap_segm": 0.7750507296295048,
+    "val_dsc": 0.9245293565453158,
+    "val_hd95": 42.7056000521183,
+    "val_jsi": 0.8674003830532555,
+    "val_jsi_thr": 0.8486860287512016,
+    "val_loss": 0.0,
+    "val_n_empty_pred": 0.0,
+    "val_nsd": 0.6711698428449858,
+    "val_pooled_dsc": 0.9289822301835684,
+    "val_pooled_jsi": 0.8673826488824667,
+    "val_sensitivity": 0.9536805368973905,
+    "val_specificity": 0.9595252987218522
+  },
+  "model": "sam3",
+  "phase": "phase1_baseline",
+  "protocol": {
+    "act_ckpt": false,
+    "amp": true,
+    "batch": 2,
+    "deterministic": true,
+    "epochs": 30,
+    "freeze_text": true,
+    "grad_accum_chunks": 1,
+    "hflip_p": 0.5,
+    "limit_images": null,
+    "lr_scale": 0.1,
+    "lrd_vision_backbone": 0.9,
+    "monitor": "val_jsi",
+    "patience": 30,
+    "prompt": "skin lesion",
+    "resize_min_size": 480,
+    "resolution": 1008,
+    "scheduler_warmup": 2,
+    "score_threshold": 0.5,
+    "seed": 0,
+    "strict_determinism": false,
+    "weight_decay": 0.1
+  },
+  "protocol_hash": "5d586abbebf6d674",
+  "run_dir": "logs/pipeline_final_v1/phase1_baseline/sam3_baseline",
+  "status": "complete"
+}

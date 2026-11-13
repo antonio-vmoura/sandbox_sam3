@@ -1,0 +1,39 @@
+{
+  "folds": [
+    {
+      "fold": 0,
+      "n_train": 2155,
+      "n_val": 539,
+      "val_sha256": "c47aa78fdac5a4241c63d90055887d4c10fdf8d66103b87a235d1c535e2b2050"
+    },
+    {
+      "fold": 1,
+      "n_train": 2155,
+      "n_val": 539,
+      "val_sha256": "1b874f80a5a06f5fd4d696dc718ac006b036a6d23b67e10160a30ffa2d0ab316"
+    },
+    {
+      "fold": 2,
+      "n_train": 2155,
+      "n_val": 539,
+      "val_sha256": "9640b3249c2ea9ad95c84734dc62127e9d493c69d046b21dc61ec70786fe7499"
+    },
+    {
+      "fold": 3,
+      "n_train": 2155,
+      "n_val": 539,
+      "val_sha256": "fd53efd5bed8773a811dece9352b227df37da8502ceed2a56dcfc621307b7067"
+    },
+    {
+      "fold": 4,
+      "n_train": 2156,
+      "n_val": 538,
+      "val_sha256": "54152225472b4cf49551cee6ba5b593abd792ef37115f7f774c87b7b63f7a1f6"
+    }
+  ],
+  "k": 5,
+  "pool_sha256": "425ce5adeb92e6e7cc27702696c89f67e1fbdd8da8d529863f6920c3771c122e",
+  "pool_size": 2694,
+  "seed": 0,
+  "test_size_excluded": 1000
+}

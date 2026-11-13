@@ -1,0 +1,68 @@
+{
+  "best_epoch": 4,
+  "best_pt": "logs/pipeline_final_v1/phase4_optimized/sam3_optimized/checkpoints/best.pt",
+  "data": {
+    "image_dir": "datasets/isic_2018_task1_sam3/images",
+    "train_json_sha256": "2c611233d30537669c01a2c02e9f48219483dccb9bee9e347e7cf362cfbb6993",
+    "val_json_sha256": "3f038ba8e126838bfe5caf392567121f14304ae817fc7479e3f3ab2f4d627930"
+  },
+  "epochs_trained": 30,
+  "events": [
+    {
+      "at": "2026-10-09T18:28:08+00:00",
+      "event": "start"
+    },
+    {
+      "at": "2026-10-10T11:18:56+00:00",
+      "elapsed_min": 1010.79,
+      "event": "complete"
+    }
+  ],
+  "metrics": {
+    "best_epoch": 4,
+    "epochs_trained": 30,
+    "val_accuracy": 0.9634403670575238,
+    "val_biou": 0.4438923965136556,
+    "val_coco_ap_bbox": 0.6876943889860199,
+    "val_coco_ap_segm": 0.773745278831038,
+    "val_dsc": 0.9257063399377382,
+    "val_hd95": 40.867940908432,
+    "val_jsi": 0.8694555604047096,
+    "val_jsi_thr": 0.8509225491480404,
+    "val_loss": 0.0,
+    "val_n_empty_pred": 0.0,
+    "val_nsd": 0.6872557320086647,
+    "val_pooled_dsc": 0.9266337254020077,
+    "val_pooled_jsi": 0.8632968515328653,
+    "val_sensitivity": 0.9488943193588497,
+    "val_specificity": 0.9688674337483723
+  },
+  "model": "sam3",
+  "phase": "phase4_optimized",
+  "protocol": {
+    "act_ckpt": false,
+    "amp": true,
+    "batch": 2,
+    "deterministic": true,
+    "epochs": 30,
+    "freeze_text": true,
+    "grad_accum_chunks": 1,
+    "hflip_p": 0.3488644122986354,
+    "limit_images": null,
+    "lr_scale": 0.18119025126885316,
+    "lrd_vision_backbone": 0.9890737439859537,
+    "monitor": "val_jsi",
+    "patience": 30,
+    "prompt": "skin lesion",
+    "resize_min_size": 464,
+    "resolution": 1008,
+    "scheduler_warmup": 114,
+    "score_threshold": 0.5,
+    "seed": 0,
+    "strict_determinism": false,
+    "weight_decay": 0.051518780081801545
+  },
+  "protocol_hash": "3e53718e9a6aab04",
+  "run_dir": "logs/pipeline_final_v1/phase4_optimized/sam3_optimized",
+  "status": "complete"
+}

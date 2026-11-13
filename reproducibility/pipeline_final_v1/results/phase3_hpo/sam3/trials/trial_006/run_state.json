@@ -1,0 +1,68 @@
+{
+  "best_epoch": 7,
+  "best_pt": null,
+  "data": {
+    "image_dir": "datasets/isic_2018_task1_sam3/images",
+    "train_json_sha256": "2c611233d30537669c01a2c02e9f48219483dccb9bee9e347e7cf362cfbb6993",
+    "val_json_sha256": "3f038ba8e126838bfe5caf392567121f14304ae817fc7479e3f3ab2f4d627930"
+  },
+  "epochs_trained": 10,
+  "events": [
+    {
+      "at": "2026-10-08T19:55:13+00:00",
+      "event": "start"
+    },
+    {
+      "at": "2026-10-09T01:33:36+00:00",
+      "elapsed_min": 338.38,
+      "event": "complete"
+    }
+  ],
+  "metrics": {
+    "best_epoch": 7,
+    "epochs_trained": 10,
+    "val_accuracy": 0.9579111238151178,
+    "val_biou": 0.4146895271307647,
+    "val_coco_ap_bbox": 0.6978389172915551,
+    "val_coco_ap_segm": 0.7681456620019835,
+    "val_dsc": 0.9166126275142552,
+    "val_hd95": 47.0517418847084,
+    "val_jsi": 0.8561664139969468,
+    "val_jsi_thr": 0.8153739813103232,
+    "val_loss": 0.0,
+    "val_n_empty_pred": 0.0,
+    "val_nsd": 0.6460048113364566,
+    "val_pooled_dsc": 0.9166429457698482,
+    "val_pooled_jsi": 0.8461134232621276,
+    "val_sensitivity": 0.9598808641708197,
+    "val_specificity": 0.9497812161378941
+  },
+  "model": "sam3",
+  "phase": "phase3_hpo",
+  "protocol": {
+    "act_ckpt": false,
+    "amp": true,
+    "batch": 2,
+    "deterministic": true,
+    "epochs": 10,
+    "freeze_text": true,
+    "grad_accum_chunks": 1,
+    "hflip_p": 0.49424096707794724,
+    "limit_images": null,
+    "lr_scale": 0.09022857483370998,
+    "lrd_vision_backbone": 0.8813578282165337,
+    "monitor": "val_jsi",
+    "patience": 10,
+    "prompt": "skin lesion",
+    "resize_min_size": 656,
+    "resolution": 1008,
+    "scheduler_warmup": 307,
+    "score_threshold": 0.5,
+    "seed": 0,
+    "strict_determinism": false,
+    "weight_decay": 0.021487526970311345
+  },
+  "protocol_hash": "6f794ad7a9f4b408",
+  "run_dir": "logs/pipeline_final_v1/phase3_hpo/tune_sam3/trials/trial_006",
+  "status": "complete"
+}

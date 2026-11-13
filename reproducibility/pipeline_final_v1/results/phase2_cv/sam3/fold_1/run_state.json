@@ -1,0 +1,68 @@
+{
+  "best_epoch": 11,
+  "best_pt": "logs/pipeline_final_v1/phase2_cv_baseline/sam3/runs/fold_1/checkpoints/best.pt",
+  "data": {
+    "image_dir": "datasets/isic_2018_task1_sam3/images",
+    "train_json_sha256": "79e5ac301bf9e427037caef8994e884d7dc89a269bc548562cef3befe089d1c9",
+    "val_json_sha256": "7b75f9a9cc369e91bb1883053089bb00569a257f479ef26bad1e25a7a44cd2ce"
+  },
+  "epochs_trained": 30,
+  "events": [
+    {
+      "at": "2026-10-03T22:11:46+00:00",
+      "event": "start"
+    },
+    {
+      "at": "2026-10-04T13:30:38+00:00",
+      "elapsed_min": 918.87,
+      "event": "complete"
+    }
+  ],
+  "metrics": {
+    "best_epoch": 11,
+    "epochs_trained": 30,
+    "val_accuracy": 0.9672632601247791,
+    "val_biou": 0.4763861549629355,
+    "val_coco_ap_bbox": 0.7672116528345899,
+    "val_coco_ap_segm": 0.7340295912033199,
+    "val_dsc": 0.911578160117209,
+    "val_hd95": 38.36535810168023,
+    "val_jsi": 0.849990717244087,
+    "val_jsi_thr": 0.8119219640846224,
+    "val_loss": 0.0,
+    "val_n_empty_pred": 0.0,
+    "val_nsd": 0.6886435811674075,
+    "val_pooled_dsc": 0.9196658648805972,
+    "val_pooled_jsi": 0.8512790950356781,
+    "val_sensitivity": 0.9093696071517778,
+    "val_specificity": 0.9767949905064297
+  },
+  "model": "sam3",
+  "phase": "phase2_cv_baseline",
+  "protocol": {
+    "act_ckpt": false,
+    "amp": true,
+    "batch": 2,
+    "deterministic": true,
+    "epochs": 30,
+    "freeze_text": true,
+    "grad_accum_chunks": 1,
+    "hflip_p": 0.5,
+    "limit_images": null,
+    "lr_scale": 0.1,
+    "lrd_vision_backbone": 0.9,
+    "monitor": "val_jsi",
+    "patience": 30,
+    "prompt": "skin lesion",
+    "resize_min_size": 480,
+    "resolution": 1008,
+    "scheduler_warmup": 2,
+    "score_threshold": 0.5,
+    "seed": 0,
+    "strict_determinism": false,
+    "weight_decay": 0.1
+  },
+  "protocol_hash": "04dc7559b792dfba",
+  "run_dir": "logs/pipeline_final_v1/phase2_cv_baseline/sam3/runs/fold_1",
+  "status": "complete"
+}

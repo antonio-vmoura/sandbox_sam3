@@ -1,0 +1,41 @@
+{
+  "missing": [],
+  "models": [
+    {
+      "best_epoch": 4,
+      "best_epoch_source": "best.pt",
+      "epochs_trained": 30,
+      "f1_b": NaN,
+      "f1_m": NaN,
+      "fitness": 0.8694555604047096,
+      "map5095_b": 0.6876943889860199,
+      "map5095_m": 0.773745278831038,
+      "map50_b": NaN,
+      "map50_m": NaN,
+      "model": "sam3",
+      "precision_b": NaN,
+      "precision_m": NaN,
+      "recall_b": NaN,
+      "recall_m": NaN,
+      "resumed": false,
+      "run_dir": "logs/pipeline_final_v1/phase4_optimized/sam3_optimized",
+      "split": "val",
+      "val_accuracy": 0.9634403670575238,
+      "val_biou": 0.4438923965136556,
+      "val_coco_ap_bbox": 0.6876943889860199,
+      "val_coco_ap_segm": 0.773745278831038,
+      "val_dsc": 0.9257063399377382,
+      "val_hd95": 40.867940908432,
+      "val_jsi": 0.8694555604047096,
+      "val_jsi_thr": 0.8509225491480404,
+      "val_n_empty_pred": 0.0,
+      "val_nsd": 0.6872557320086647,
+      "val_pooled_dsc": 0.9266337254020077,
+      "val_pooled_jsi": 0.8632968515328653,
+      "val_sensitivity": 0.9488943193588497,
+      "val_specificity": 0.9688674337483723
+    }
+  ],
+  "phase": "phase4",
+  "split": "val"
+}

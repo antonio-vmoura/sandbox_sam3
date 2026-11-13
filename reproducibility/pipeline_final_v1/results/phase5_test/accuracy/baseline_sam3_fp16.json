@@ -1,0 +1,145 @@
+{
+  "created_at": "2026-10-17T15:19:34+00:00",
+  "data": "../sandbox_yolo26/datasets/isic2018_task1_official/data.yaml",
+  "device": "Tesla V100S-PCIE-32GB",
+  "elapsed_min": 5.55,
+  "fp16_mode": "torch.autocast(float16), FP32 weights",
+  "instance_conf": null,
+  "instance_metrics": {
+    "f1_b": NaN,
+    "f1_m": NaN,
+    "map5095_b": NaN,
+    "map5095_m": NaN,
+    "map50_b": NaN,
+    "map50_m": NaN,
+    "precision_b": NaN,
+    "precision_m": NaN,
+    "recall_b": NaN,
+    "recall_m": NaN
+  },
+  "mask_dir": null,
+  "model": "sam3",
+  "n_images": 1000,
+  "per_image_csv": "logs/pipeline_final_v1/phase5_test/per_image/baseline_sam3_fp16.csv",
+  "pixel_conf": 0.001,
+  "pixel_metrics": {
+    "accuracy": {
+      "ci95_high": 0.9566481853080538,
+      "ci95_low": 0.9458617091285016,
+      "mean": 0.9515068577040177,
+      "median": 0.9772053044973141,
+      "n": 1000,
+      "q1": 0.9542012023925781,
+      "q3": 0.9881000264485678,
+      "std": 0.08953333998800322
+    },
+    "biou": {
+      "ci95_high": 0.43810796546087133,
+      "ci95_low": 0.41274429448621097,
+      "mean": 0.4252775338459467,
+      "median": 0.43071575305319676,
+      "n": 1000,
+      "q1": 0.2677910935565456,
+      "q3": 0.5835754815448005,
+      "std": 0.21180220319574114
+    },
+    "dsc": {
+      "ci95_high": 0.9203886015305381,
+      "ci95_low": 0.9071238938111386,
+      "mean": 0.9140586061243571,
+      "median": 0.9447588990381031,
+      "n": 1000,
+      "q1": 0.9062168579012777,
+      "q3": 0.9647777652305314,
+      "std": 0.10675568782616973
+    },
+    "hd95": {
+      "ci95_high": 53.643577949704515,
+      "ci95_low": 44.92333208907902,
+      "mean": 49.15785262794494,
+      "median": 24.53155221939086,
+      "n": 1000,
+      "q1": 13.571901512145997,
+      "q3": 49.356446266174295,
+      "std": 71.59560971197845
+    },
+    "jsi": {
+      "ci95_high": 0.862724342542778,
+      "ci95_low": 0.8463124232574313,
+      "mean": 0.854653572321318,
+      "median": 0.8953014634668701,
+      "n": 1000,
+      "q1": 0.8285160236976216,
+      "q3": 0.9319523220615474,
+      "std": 0.13428682239574125
+    },
+    "jsi_thr": {
+      "ci95_high": 0.8391623965722173,
+      "ci95_low": 0.8111826794068475,
+      "mean": 0.825344560568949,
+      "median": 0.8953014634668701,
+      "n": 1000,
+      "q1": 0.8285160236976216,
+      "q3": 0.9319523220615474,
+      "std": 0.22765023296922188
+    },
+    "n_both_empty": 0,
+    "n_empty_gt": 0,
+    "n_empty_pred": 0,
+    "n_images": 1000,
+    "nsd": {
+      "ci95_high": 0.6722890580784675,
+      "ci95_low": 0.6383106359445918,
+      "mean": 0.6550087708730205,
+      "median": 0.707425070387919,
+      "n": 1000,
+      "q1": 0.4545890237458664,
+      "q3": 0.9066558421635261,
+      "std": 0.28111448977869236
+    },
+    "pooled_dsc": 0.9048603070582427,
+    "pooled_jsi": 0.8262510370961104,
+    "sensitivity": {
+      "ci95_high": 0.9477345961713562,
+      "ci95_low": 0.9331557895279919,
+      "mean": 0.9407575802393605,
+      "median": 0.9846150667229471,
+      "n": 1000,
+      "q1": 0.931533756315413,
+      "q3": 0.9985179614665115,
+      "std": 0.11458496243886496
+    },
+    "specificity": {
+      "ci95_high": 0.9561390614376435,
+      "ci95_low": 0.9388829560734365,
+      "mean": 0.9476525925109838,
+      "median": 0.9852328276021581,
+      "n": 999,
+      "q1": 0.9628507459693364,
+      "q3": 0.995424538235323,
+      "std": 0.1374964841236288
+    }
+  },
+  "precision": "fp16",
+  "settings": {
+    "conf": 0.001,
+    "dataset": "e78c96d148e879a5",
+    "eval_version": 5,
+    "imgsz": 1008,
+    "precision": "fp16",
+    "prompt": "skin lesion",
+    "run_config_sha256": "6cf17bbbce46de4f153278d1a496907b571c52cb89354fe86fbf9dcf618b9bee",
+    "test_list_sha256": "4f65fc694bcbd7c3b8d1c362dc454c98b34138d3572f2855b5c8b6b58b9141e6",
+    "weights_sha256": "f82765858f04d818a7c48ecbacaca4067fb7c63cd01c341c12f6b42ceeb45bc3"
+  },
+  "settings_hash": "2d5514b20ef00e1b",
+  "split": "test",
+  "torch_version": "2.5.1+cu121",
+  "ultralytics_speed_ms": {
+    "inference": 305.2968911100179,
+    "postprocess": NaN,
+    "preprocess": NaN
+  },
+  "variant": "baseline",
+  "weights": "logs/pipeline_final_v1/phase1_baseline/sam3_baseline/checkpoints/best.pt"
+}

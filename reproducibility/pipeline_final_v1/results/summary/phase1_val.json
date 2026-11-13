@@ -1,0 +1,41 @@
+{
+  "missing": [],
+  "models": [
+    {
+      "best_epoch": 7,
+      "best_epoch_source": "best.pt",
+      "epochs_trained": 30,
+      "f1_b": NaN,
+      "f1_m": NaN,
+      "fitness": 0.8674003830532555,
+      "map5095_b": 0.7090014571639455,
+      "map5095_m": 0.7750507296295048,
+      "map50_b": NaN,
+      "map50_m": NaN,
+      "model": "sam3",
+      "precision_b": NaN,
+      "precision_m": NaN,
+      "recall_b": NaN,
+      "recall_m": NaN,
+      "resumed": false,
+      "run_dir": "logs/pipeline_final_v1/phase1_baseline/sam3_baseline",
+      "split": "val",
+      "val_accuracy": 0.963891367736618,
+      "val_biou": 0.43418262637968824,
+      "val_coco_ap_bbox": 0.7090014571639455,
+      "val_coco_ap_segm": 0.7750507296295048,
+      "val_dsc": 0.9245293565453158,
+      "val_hd95": 42.7056000521183,
+      "val_jsi": 0.8674003830532555,
+      "val_jsi_thr": 0.8486860287512016,
+      "val_n_empty_pred": 0.0,
+      "val_nsd": 0.6711698428449858,
+      "val_pooled_dsc": 0.9289822301835684,
+      "val_pooled_jsi": 0.8673826488824667,
+      "val_sensitivity": 0.9536805368973905,
+      "val_specificity": 0.9595252987218522
+    }
+  ],
+  "phase": "phase1",
+  "split": "val"
+}
